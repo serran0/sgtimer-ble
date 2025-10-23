@@ -1,0 +1,4 @@
+event,shot_num,shot_time,split,ts_device
+SHOT_DETECTED,1,1.980,,1980
+SHOT_DETECTED,2,2.180,0.200,2180
+SHOT_DETECTED,3,2.340,0.160,2340

@@ -1,0 +1,145 @@
+/* ───────────── Global ───────────── */
+body {
+  background-color: #000;
+  color: #fff;
+  font-family: Verdana, sans-serif;
+  margin: 0;
+}
+
+#display {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding: 25px;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #fff;
+}
+
+/* ───────────── Title ───────────── */
+#competitionTitle {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 2.8vw;
+  font-weight: bold;
+}
+
+/* ───────────── Connection Indicator ───────────── */
+.status-dot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+.status-dot.connected { background: #0f0; }
+.status-dot.disconnected { background: #f00; }
+.status-dot.standby { background: #ff0; }
+
+/* ───────────── Session Info ───────────── */
+#sessionInfo {
+  position: absolute;
+  top: 25%;
+  left: 25px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px 20px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 180px;
+}
+
+#sessionInfo div {
+  font-size: 1.6vw;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+/* ───────────── Shots Area ───────────── */
+/* Fade the content itself (bottom 10%) */
+#shotsContainer {
+  position: absolute;
+  top: 25%;
+  right: 25px;
+  width: 40%;
+  height: 75%;
+  overflow: hidden;                 /* keep content clipped */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  box-sizing: border-box;
+
+  /* Content fade using mask */
+  -webkit-mask-image: linear-gradient(to bottom,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) 80%,
+    rgba(0,0,0,0) 100%);
+  mask-image: linear-gradient(to bottom,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) 80%,
+    rgba(0,0,0,0) 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+
+#shots {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  width: 100%;
+  gap: 4px;
+  overflow-y: hidden;
+}
+
+
+
+
+.shot-line {
+  font-size: 2.2vw;
+  font-weight: 700;
+  color: #fff;
+  opacity: 1;
+  line-height: 1.2;
+}
+
+.split-line {
+  font-size: 1.3vw;
+  font-weight: 700;
+  color: #e6e6e6;
+  opacity: 1;
+  line-height: 1.1;
+  margin-bottom: 10px;
+}
+
+/* ───────────── Session Status ───────────── */
+#status {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: 1.8vw;
+  font-weight: bold;
+}
+#status.live { color: #0f0; }
+#status.standby { color: #ff0; }
+#status.stopped { color: #f00; }
+
+/* ───────────── Text Shadow for Contrast ───────────── */
+#display,
+#display * {
+  text-shadow: 3px 3px 3px rgba(0, 0, 0, 0.9);
+}

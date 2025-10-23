@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SG Timer Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/style-admin.css">
+
+</head>
+<body>
+  <h1>SG Timer Admin Panel</h1>
+  <div id="controls">
+    <button id="scanBtn" class="btn">🔍 Scan</button>
+    <select id="deviceSelect"></select>
+    <button id="connectBtn" class="btn">🔗 Connect</button>
+    <button id="disconnectBtn" class="btn btn-secondary">⛔ Disconnect</button>
+  </div>
+
+  
+ <section id="titleSection">
+  <h2>Main Title</h2>
+  <div class="title-row">
+    <input id="titleInput" type="text" placeholder="Enter title...">
+    <button id="setTitleBtn" class="btn">Set Title</button>
+  </div>
+</section>
+
+
+  <section id="consoleSection">
+  <h2>Console</h2>
+  <div id="log"></div>
+  </section>
+
+  <section id="sessionsSection">
+    <div class="sessions-header">
+  <h2>Past Sessions</h2>
+  <div class="session-controls">
+    <button id="refreshSessionsBtn" class="btn">🔄 Refresh Sessions</button>
+    <button id="clearSessionsBtn" class="btn clear-btn">🗑️ Clear All Sessions</button>
+  </div>
+</div>
+    <div id="sessionsList" class="sessions-list"></div>
+    <div class="pagination">
+      <button id="loadMoreBtn" class="btn">Show next 20 sessions</button>
+    </div>
+  </section>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

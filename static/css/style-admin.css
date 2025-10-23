@@ -1,0 +1,291 @@
+/* ───────────── Global ───────────── */
+body {
+  background-color: #121212; /* smooth dark gray background */
+  color: #f0f0f0;            /* soft white text */
+  font-family: Verdana, sans-serif;
+  margin: 25px;
+  line-height: 1.5;
+}
+
+
+/* ───────────── Buttons ───────────── */
+.btn {
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  background: linear-gradient(135deg, #FFA733, #FF5C00);
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(255, 140, 0, 0.3);
+  transition: all 0.25s ease-in-out;
+}
+
+.btn:hover {
+  background: linear-gradient(135deg, #FFC266, #FF6A1A);
+  box-shadow: 0 0 12px rgba(255, 102, 0, 0.6);
+}
+
+
+/* ───────────── Title Section ───────────── */
+#titleSection {
+  margin-top: 30px;
+}
+
+#titleSection h2 {
+  margin-bottom: 10px;
+}
+
+#titleSection .title-row {
+  display: flex;
+  align-items: center;  /* vertical alignment */
+  gap: 10px;            /* space between input and button */
+}
+#consoleSection {
+margin-top: 20px;
+}
+
+/* ───────────── Title Input ───────────── */
+#titleInput {
+  background: #1c1c1c;
+  color: #fff6e8;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 8px;
+  padding: 10px 16px;
+  padding-top: 7px;
+  padding-bottom: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  letter-spacing: 0.3px;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5),
+              0 0 6px rgba(255, 120, 0, 0.15);
+  outline: none;
+  width: 450px;
+  height: 32px;              /* uniform height for perfect alignment */
+  display: flex;
+  align-items: center;       /* vertically center text */
+  transition: all 0.25s ease;
+}
+
+#titleInput:focus {
+  border-color: #FFA733;
+  box-shadow: 0 0 8px rgba(255, 120, 0, 0.5),
+              inset 0 0 4px rgba(255, 165, 0, 0.3);
+  background: #222;
+}
+
+#titleInput::placeholder {
+  color: rgba(255, 200, 120, 0.5);
+  font-style: italic;
+  font-family: "Segoe UI", Verdana, sans-serif;
+}
+
+/* Match Set Title button height and alignment */
+#setTitleBtn,
+#titleSection .btn {
+  height: 42px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+
+/* ───────────── Logs ───────────── */
+#log {
+  background: #181818;
+  color: #e0e0e0;
+  padding: 12px;
+  
+  height: 300px;
+  overflow: auto;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.4);
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+
+h2 {
+  margin: 0;
+  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #FFA733;
+  text-shadow: 0 0 6px rgba(255, 165, 0, 0.2);
+}
+
+/* ───────────── Session Header ───────────── */
+.sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 25px 0 10px 0;
+}
+
+.sessions-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: bold;
+  color: #FFA733;
+  text-shadow: 0 0 6px rgba(255, 165, 0, 0.2);
+}
+
+/* ───────────── Session List ───────────── */
+.sessions-list {
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-card {
+  background: #1f1f1f;
+  padding: 16px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.session-card:hover {
+  
+  box-shadow: 0 0 14px rgba(255, 120, 0, 0.45), 0 0 6px rgba(255, 100, 0, 0.25);
+}
+
+.session-title {
+  font-weight: bold;
+  color: #fff;
+}
+
+.session-meta {
+  color: #ccc;
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+
+
+/* ───────────── Session Actions ───────────── */
+.session-actions a.btn {
+  padding: 6px 10px;
+  font-size: 13px;
+  background: linear-gradient(135deg, #FF7E29, #C23A00); /* burnt orange variant */
+  color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 0 4px rgba(255, 100, 0, 0.3);
+  text-decoration: none;
+}
+
+.session-actions a.btn:hover {
+  background: linear-gradient(135deg, #FF9E50, #E04A00);
+  box-shadow: 0 0 8px rgba(255, 120, 0, 0.5);
+}
+
+/* ───────────── Refresh Button (Updated Style) ───────────── */
+#refreshSessionsBtn {
+  background: linear-gradient(135deg, #FF9E32, #FF5200); /* orange juice → blood orange */
+  color: #fff;
+  border: none;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.25s ease-in-out;
+  box-shadow: 0 0 6px rgba(255, 120, 0, 0.3);
+}
+
+#refreshSessionsBtn:hover {
+  background: linear-gradient(135deg, #FFC266, #FF6A1A);
+  box-shadow: 0 0 12px rgba(255, 120, 0, 0.6);
+}
+
+
+/* Clear All Sessions (no animations, state-driven) */
+#clearSessionsBtn {
+  background: linear-gradient(135deg, #444, #222); /* default look, but JS sets .inactive initially */
+  color: #aaa;
+  border: none;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 6px;
+  margin-left: 8px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+  cursor: not-allowed;     /* default until armed */
+  opacity: 0.7;
+  pointer-events: auto;    /* clicks are always detectable by JS */
+}
+
+#clearSessionsBtn.inactive {
+  background: linear-gradient(135deg, #444, #222);
+  color: #aaa;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+#clearSessionsBtn.armed {
+  background: linear-gradient(135deg, #FFA733, #FF5C00);
+  color: #fff;
+  cursor: pointer;
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(255, 120, 0, 0.5);
+}
+
+
+/* ───────────── Tooltip for Clear Button ───────────── */
+#clearSessionsBtn {
+  position: relative;
+}
+
+#clearSessionsBtn::after {
+  content: "Hold hover for 5 seconds to enable";
+  position: absolute;
+  bottom: 130%; /* position above the button */
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 140, 0, 0.9);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.4);
+}
+
+#clearSessionsBtn:hover::after {
+  opacity: 1;
+}
+
+/* hide tooltip once armed */
+#clearSessionsBtn.armed::after {
+  opacity: 0;
+}
+
+
+
+/* ───────────── Scrollbar Styling ───────────── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 120, 0, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 120, 0, 0.6);
+}
