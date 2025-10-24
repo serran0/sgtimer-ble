@@ -2,9 +2,10 @@
 import asyncio
 import time
 import os
-from typing import Dict, Optional
-from datetime import datetime
+import sys
 import shutil
+from datetime import datetime
+from typing import Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -13,19 +14,34 @@ from bleak import BleakScanner, BleakClient
 from sessions_api import router as sessions_router
 
 # ─────────────────────────────────────────────
-# BLE service details
+# Cross-platform path setup (supports PyInstaller)
 # ─────────────────────────────────────────────
-SERVICE_UUID = "7520ffff-14d2-4cda-8b6b-697c554c9311"
-EVENT_UUID = "75200001-14d2-4cda-8b6b-697c554c9311"
-NAME_PREFIX = "SG-SST"
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller EXE
+    BASE_DIR = os.path.dirname(sys.executable)
+    STATIC_DIR = os.path.join(sys._MEIPASS, "static")  # Bundled assets
+else:
+    # Running from Python source
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-DATA_DIR = "data"
-TITLE_FILE = "title.txt"
+DATA_DIR = os.path.join(BASE_DIR, "data")
+ARCHIVE_ROOT = os.path.join(DATA_DIR, "archive")
+TITLE_FILE = os.path.join(BASE_DIR, "title.txt")
 
+# Create base folders on startup
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(ARCHIVE_ROOT, exist_ok=True)
 if not os.path.exists(TITLE_FILE):
     with open(TITLE_FILE, "w") as f:
         f.write("SG Timer")
+
+# ─────────────────────────────────────────────
+# BLE service details
+# ─────────────────────────────────────────────
+SERVICE_UUID = "7520ffff-14d2-4cda-8b6b-697c554c9311"
+EVENT_UUID   = "75200001-14d2-4cda-8b6b-697c554c9311"
+NAME_PREFIX  = "SG-SST"
 
 EVENT_TYPES = {
     0x00: "SESSION_STARTED",
@@ -35,6 +51,7 @@ EVENT_TYPES = {
     0x04: "SHOT_DETECTED",
     0x05: "SESSION_SET_BEGIN",
 }
+
 
 # ─────────────────────────────────────────────
 # FastAPI setup
@@ -120,27 +137,34 @@ last_session_state = None
 # ─────────────────────────────────────────────
 @app.post("/clear_sessions")
 async def clear_sessions():
-    """Move all session CSV files to /data/archive/YYYY-MM-DD_HH-MM and clear the data folder."""
+    """
+    Move all session CSV files to /data/archive/YYYY-MM-DD_HH-MM/
+    and ensure archive structure always exists.
+    """
     global last_session_state
-    archive_root = os.path.join(DATA_DIR, "archive")
+
+    # Make sure archive path structure exists
+    os.makedirs(ARCHIVE_ROOT, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    target_dir = os.path.join(archive_root, timestamp)
+    target_dir = os.path.join(ARCHIVE_ROOT, timestamp)
     os.makedirs(target_dir, exist_ok=True)
 
     moved = 0
     for fn in os.listdir(DATA_DIR):
-        if fn.endswith(".csv"):
+        if fn.lower().endswith(".csv"):
             src = os.path.join(DATA_DIR, fn)
             dst = os.path.join(target_dir, fn)
-            shutil.move(src, dst)
-            moved += 1
+            try:
+                shutil.move(src, dst)
+                moved += 1
+            except Exception as e:
+                print(f"⚠️ Could not move {fn}: {e}")
 
-    # clear retained session after archive
+    # Clear retained session cache
     last_session_state = None
 
+    print(f"🗑️ Archived {moved} file(s) to {target_dir}")
     return {"status": "ok", "archived": moved, "archive_dir": target_dir}
-
-
 # ─────────────────────────────────────────────
 # BLE Device Manager with watchdog
 # ─────────────────────────────────────────────
@@ -435,4 +459,13 @@ async def get_status():
 # ─────────────────────────────────────────────
 # Mount static files
 # ─────────────────────────────────────────────
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting SG Timer BLE Server...")
+
+    if getattr(sys, 'frozen', False):
+        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    else:
+        uvicorn.run("server:app", host="0.0.0.0", port=8000, log_level="debug", reload=True)
