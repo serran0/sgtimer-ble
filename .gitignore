@@ -1,5 +1,18 @@
-__pychache__
-.venv
-data/*
-data/archive/*/
+# Exclude Python cache directories
+__pycache__/
+*/__pycache__/
+
+# Exclude virtual environment folders
+.venv/
+venv/
+*/.venv/
+*/venv/
+
+# Exclude all files in /data/archive but keep folders
+/data/archive/*
+!/data/archive/**/
+
+
+# Exclude this .gitignore file itself and other specified files
+.gitignore
 auto-push.sh
