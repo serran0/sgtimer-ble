@@ -1,4 +1,5 @@
 __pychache__
 .venv
 data/*
+data/archive/*/
 auto-push.sh
