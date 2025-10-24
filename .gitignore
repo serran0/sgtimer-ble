@@ -8,9 +8,12 @@ venv/
 */.venv/
 */venv/
 
-.output/
+
+_internal/
+*/_internal/
+
+
 output/
-*/.output/
 */output/
 
 # Exclude all files in /data/archive but keep folders
