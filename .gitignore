@@ -24,3 +24,4 @@ output/
 # Exclude this .gitignore file itself and other specified files
 .gitignore
 auto-push.sh
+server.exe
