@@ -41,7 +41,8 @@ ws.onmessage = (e) => {
       const model = msg.model ? ` - ${msg.model}` : "";
       setTimeout(() => {
         currentConnectedDevice = msg.addr;
-        log(`✅ Device connected: ${name}${model} (${msg.addr})`);
+        const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
+        log(`✅ Device connected: ${name}${model} (${msg.addr})${apiVer}`);
         localStorage.setItem("lastDeviceAddr", msg.addr);
         updateDeviceDropdown(msg.addr, name);
       }, 500);
@@ -52,7 +53,8 @@ ws.onmessage = (e) => {
       const name = msg.name || "Unknown";
       const model = msg.model ? ` - ${msg.model}` : "";
       setTimeout(() => {
-        log(`⚠️ Device disconnected: ${name}${model} (${msg.addr})`);
+        const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
+        log(`⚠️ Device disconnected: ${name}${model} (${msg.addr})${apiVer}`);
         currentConnectedDevice = null;
         localStorage.removeItem("lastDeviceAddr");
       }, 500);
@@ -62,10 +64,11 @@ ws.onmessage = (e) => {
     case "WATCHDOG": {
       const name = msg.name || "Unknown";
       const model = msg.model ? ` - ${msg.model}` : "";
-      if (msg.status === "reconnected")
-        log(`🟢 Watchdog reconnected: (${msg.addr}) ${name}${model}`);
-      else if (msg.status === "disconnected")
-        log(`🟡 Watchdog reconnecting: (${msg.addr}) ${name}${model}`);
+      const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
+if (msg.status === "reconnected")
+  log(`🟢 Watchdog reconnected: (${msg.addr}) ${name}${model}${apiVer}`);
+else if (msg.status === "disconnected")
+  log(`🟡 Watchdog reconnecting: (${msg.addr}) ${name}${model}${apiVer}`);
       else log(`⚠️ Watchdog: ${msg.status}`);
       break;
     }
@@ -326,7 +329,8 @@ fetch("/status")
     if (data.connected && data.devices.length > 0) {
       const d = data.devices.find((x) => x.connected);
       currentConnectedDevice = d.address;
-      log(`✅ Device connected: ${d.name} (${d.address})`);
+      const apiVer = d.api_version ? ` — API v${d.api_version}` : "";
+      log(`✅ Device connected: ${d.name} (${d.address})${apiVer}`);
       localStorage.setItem("lastDeviceAddr", d.address);
       updateDeviceDropdown(d.address, d.name);
     } else {

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+__version__ = "0.8.1"
+
 import asyncio
 import time
 import os
@@ -16,12 +18,10 @@ from sessions_api import router as sessions_router
 # ─────────────────────────────────────────────
 # Cross-platform path setup (supports PyInstaller)
 # ─────────────────────────────────────────────
-if getattr(sys, 'frozen', False):
-    # Running as PyInstaller EXE
+if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
-    STATIC_DIR = os.path.join(sys._MEIPASS, "static")  # Bundled assets
+    STATIC_DIR = os.path.join(sys._MEIPASS, "static")
 else:
-    # Running from Python source
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     STATIC_DIR = os.path.join(BASE_DIR, "static")
 
@@ -40,8 +40,9 @@ if not os.path.exists(TITLE_FILE):
 # BLE service details
 # ─────────────────────────────────────────────
 SERVICE_UUID = "7520ffff-14d2-4cda-8b6b-697c554c9311"
-EVENT_UUID   = "75200001-14d2-4cda-8b6b-697c554c9311"
-NAME_PREFIX  = "SG-SST"
+EVENT_UUID = "75200001-14d2-4cda-8b6b-697c554c9311"
+API_VERSION_UUID = "75200002-14d2-4cda-8b6b-697c554c9311"
+NAME_PREFIX = "SG-SST"
 
 EVENT_TYPES = {
     0x00: "SESSION_STARTED",
@@ -52,7 +53,6 @@ EVENT_TYPES = {
     0x05: "SESSION_SET_BEGIN",
 }
 
-
 # ─────────────────────────────────────────────
 # FastAPI setup
 # ─────────────────────────────────────────────
@@ -61,7 +61,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 app.include_router(sessions_router)
 
@@ -117,7 +117,6 @@ async def ws_endpoint(ws: WebSocket):
 async def broadcast(msg: dict):
     await hub.broadcast(msg)
 
-
 # ─────────────────────────────────────────────
 # Session State Retention
 # ─────────────────────────────────────────────
@@ -128,7 +127,7 @@ session_state = {
     "first_shot": 0.0,
     "best_split": 0.0,
     "total_time": 0.0,
-    "sess_id": None
+    "sess_id": None,
 }
 last_session_state = None
 
@@ -143,7 +142,6 @@ async def clear_sessions():
     """
     global last_session_state
 
-    # Make sure archive path structure exists
     os.makedirs(ARCHIVE_ROOT, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     target_dir = os.path.join(ARCHIVE_ROOT, timestamp)
@@ -160,11 +158,10 @@ async def clear_sessions():
             except Exception as e:
                 print(f"⚠️ Could not move {fn}: {e}")
 
-    # Clear retained session cache
     last_session_state = None
-
     print(f"🗑️ Archived {moved} file(s) to {target_dir}")
     return {"status": "ok", "archived": moved, "archive_dir": target_dir}
+
 # ─────────────────────────────────────────────
 # BLE Device Manager with watchdog
 # ─────────────────────────────────────────────
@@ -188,7 +185,9 @@ class DeviceManager:
         self.csv_file = None
         self._stop = False
         self._wd_task: Optional[asyncio.Task] = None
-        self.last_shot_time = None  # track previous shot time
+        self.last_shot_time = None
+        self.api_version = "?"
+        self.model = self._get_model()
 
     def _get_model(self):
         """Extract model type from BLE name pattern."""
@@ -211,12 +210,46 @@ class DeviceManager:
             await self.client.connect()
             self.connected = True
 
-            model = self._get_model()
+            # ───────────── Read API version correctly ─────────────
+            try:
+                await asyncio.sleep(0.5)  # allow GATT table to populate
+                services = self.client.services
+                if not services:
+                    await self.client.get_services()
+                    services = self.client.services
+
+                api_char = None
+                for service in services:
+                    for char in service.characteristics:
+                        if str(char.uuid).lower() == API_VERSION_UUID:
+                            api_char = char
+                            break
+                    if api_char:
+                        break
+
+                if api_char:
+                    data = await self.client.read_gatt_char(api_char)
+                    if data and len(data) > 4:
+                        version_bytes = data[4:]  # skip 7520FFFE header
+                        decoded = ''.join(chr(b) for b in version_bytes if 32 <= b <= 126).strip()
+                        self.api_version = decoded or "Unknown"
+                    else:
+                        self.api_version = "Unknown"
+                else:
+                    print("⚠️ API_VERSION characteristic not found.")
+                    self.api_version = "Unavailable"
+            except Exception as e:
+                print(f"⚠️ Could not read API version: {e}")
+                self.api_version = "Unknown"
+
+            print(f"✅ Connected to {self.name} ({self.addr}) [{self.model}] API v{self.api_version}")
+
             await broadcast({
                 "type": "DEVICE_CONNECTED",
                 "addr": self.addr,
                 "name": self.name,
-                "model": model
+                "model": self.model,
+                "api_version": self.api_version,
             })
 
             await self.client.start_notify(EVENT_UUID, self.handle_event)
@@ -241,11 +274,13 @@ class DeviceManager:
         except Exception:
             pass
         self.connected = False
+        print(f"⚠️ Disconnected from {self.name} ({self.addr}) [{self.model}]")
         await broadcast({
             "type": "DEVICE_DISCONNECTED",
             "addr": self.addr,
             "name": self.name,
-            "model": self._get_model()
+            "model": self.model,
+            "api_version": self.api_version,
         })
 
     async def _watchdog(self):
@@ -260,7 +295,8 @@ class DeviceManager:
                         "status": "disconnected",
                         "addr": self.addr,
                         "name": self.name,
-                        "model": self._get_model()
+                        "model": self.model,
+                        "api_version": self.api_version,
                     })
                     try:
                         await self.connect()
@@ -269,14 +305,15 @@ class DeviceManager:
                             "status": "reconnected",
                             "addr": self.addr,
                             "name": self.name,
-                            "model": self._get_model()
+                            "model": self.model,
+                            "api_version": self.api_version,
                         })
                     except Exception as e:
                         await broadcast({
                             "type": "WATCHDOG",
                             "status": f"retry_failed:{e}",
                             "addr": self.addr,
-                            "name": self.name
+                            "name": self.name,
                         })
             except asyncio.CancelledError:
                 break
@@ -285,7 +322,7 @@ class DeviceManager:
                     "type": "WATCHDOG",
                     "status": f"error:{e}",
                     "addr": self.addr,
-                    "name": self.name
+                    "name": self.name,
                 })
 
     async def handle_event(self, _h, data: bytearray):
@@ -318,7 +355,7 @@ class DeviceManager:
                 "first_shot": 0.0,
                 "best_split": 0.0,
                 "total_time": 0.0,
-                "sess_id": self.sess_id
+                "sess_id": self.sess_id,
             }
 
         # ───────────── Shot Detected ─────────────
@@ -333,11 +370,9 @@ class DeviceManager:
                 split_time = shot_time - self.last_shot_time
             self.last_shot_time = shot_time
 
-            msg.update({
-                "num": shot_num,
-                "time": shot_time,
-                "split": split_time if split_time != "" else None
-            })
+            msg.update(
+                {"num": shot_num, "time": shot_time, "split": split_time if split_time != "" else None}
+            )
 
             # Update memory session state
             if session_state.get("active"):
@@ -353,7 +388,9 @@ class DeviceManager:
             # Write to CSV
             if self.csv_file:
                 split_str = f"{split_time:.3f}" if split_time != "" else ""
-                self.csv_file.write(f"SHOT_DETECTED,{shot_num},{shot_time:.3f},{split_str},{ts_device}\n")
+                self.csv_file.write(
+                    f"SHOT_DETECTED,{shot_num},{shot_time:.3f},{split_str},{ts_device}\n"
+                )
                 self.csv_file.flush()
 
         # ───────────── Session Stop ─────────────
@@ -369,26 +406,25 @@ class DeviceManager:
 
         await broadcast(msg)
 
-
 # ─────────────────────────────────────────────
 # REST Endpoints
 # ─────────────────────────────────────────────
 @app.get("/devices")
 async def list_devices():
-    """Scan and return devices with name and address."""
+    """Scan and return devices with name, address, and model."""
     async with scan_lock:
         try:
             devs = await BleakScanner.discover(timeout=4.0)
         except Exception as e:
             raise HTTPException(500, f"BLE scan failed: {e}")
 
-    return {
-        "devices": [
-            {"name": d.name, "address": d.address}
-            for d in devs if d.name and d.name.startswith(NAME_PREFIX)
-        ]
-    }
-
+    results = []
+    for d in devs:
+        if d.name and d.name.startswith(NAME_PREFIX):
+            code = d.name[7].upper() if len(d.name) > 7 else "?"
+            model = "SG Timer Sport" if code == "A" else "SG Timer GO" if code == "B" else "Unknown Model"
+            results.append({"name": d.name, "address": d.address, "model": model})
+    return {"devices": results}
 
 @app.post("/connect")
 async def connect_device(body: dict):
@@ -401,9 +437,16 @@ async def connect_device(body: dict):
     if not dm:
         dm = DeviceManager(addr, name or addr)
         devices[addr] = dm
+    else:
+        dm.name = name or dm.name
     await dm.connect()
-    return {"status": "connected", "address": addr, "name": dm.name}
-
+    return {
+        "status": "connected",
+        "address": addr,
+        "name": dm.name,
+        "model": dm.model,
+        "api_version": dm.api_version,
+    }
 
 @app.post("/disconnect")
 async def disconnect_device(body: dict):
@@ -413,7 +456,6 @@ async def disconnect_device(body: dict):
         return {"status": "not connected"}
     await dm.disconnect()
     return {"status": "disconnected", "address": addr}
-
 
 # ─────────────────────────────────────────────
 # Title Management
@@ -427,7 +469,6 @@ def get_title():
         title = f.read().strip()
     return {"title": title}
 
-
 @app.post("/set_title")
 async def set_title(body: dict):
     """Set and broadcast new competition title."""
@@ -439,22 +480,24 @@ async def set_title(body: dict):
     await broadcast({"type": "TITLE_UPDATE", "title": title})
     return {"status": "ok", "title": title}
 
-
 @app.get("/status")
 async def get_status():
     """Return the current BLE connection state."""
     connected_devices = []
     for addr, dm in devices.items():
-        connected_devices.append({
-            "address": addr,
-            "name": dm.name,
-            "connected": bool(dm.client and dm.client.is_connected)
-        })
+        connected_devices.append(
+            {
+                "address": addr,
+                "name": dm.name,
+                "model": dm.model,
+                "api_version": dm.api_version,
+                "connected": bool(dm.client and dm.client.is_connected),
+            }
+        )
     return {
         "connected": any(d["connected"] for d in connected_devices),
-        "devices": connected_devices
+        "devices": connected_devices,
     }
-
 
 # ─────────────────────────────────────────────
 # Mount static files
@@ -463,9 +506,9 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting SG Timer BLE Server...")
 
-    if getattr(sys, 'frozen', False):
+    print(f"Starting SG Timer BLE Server v{__version__}...")
+    if getattr(sys, "frozen", False):
         uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
     else:
         uvicorn.run("server:app", host="0.0.0.0", port=8000, log_level="debug", reload=True)
