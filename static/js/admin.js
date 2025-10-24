@@ -38,11 +38,14 @@ ws.onmessage = (e) => {
       if (currentConnectedDevice && currentConnectedDevice === msg.addr) return;
 
       const name = msg.name || "Unknown";
-      const model = msg.model ? ` - ${msg.model}` : "";
+      const model = msg.model ? `${msg.model}` : "Unknown Model";
+      const apiVer = msg.api_version && msg.api_version !== "?"
+        ? `, API v${msg.api_version}`
+        : "";
+
       setTimeout(() => {
         currentConnectedDevice = msg.addr;
-        const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
-        log(`✅ Device connected: ${name}${model} (${msg.addr})${apiVer}`);
+        log(`✅ Device connected: ${name} (${model}${apiVer})`);
         localStorage.setItem("lastDeviceAddr", msg.addr);
         updateDeviceDropdown(msg.addr, name);
       }, 500);
@@ -51,10 +54,13 @@ ws.onmessage = (e) => {
 
     case "DEVICE_DISCONNECTED": {
       const name = msg.name || "Unknown";
-      const model = msg.model ? ` - ${msg.model}` : "";
+      const model = msg.model ? `${msg.model}` : "Unknown Model";
+      const apiVer = msg.api_version && msg.api_version !== "?"
+        ? `, API v${msg.api_version}`
+        : "";
+
       setTimeout(() => {
-        const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
-        log(`⚠️ Device disconnected: ${name}${model} (${msg.addr})${apiVer}`);
+        log(`⚠️ Device disconnected: ${name} (${model}${apiVer})`);
         currentConnectedDevice = null;
         localStorage.removeItem("lastDeviceAddr");
       }, 500);
@@ -64,11 +70,13 @@ ws.onmessage = (e) => {
     case "WATCHDOG": {
       const name = msg.name || "Unknown";
       const model = msg.model ? ` - ${msg.model}` : "";
-      const apiVer = msg.api_version ? ` — API v${msg.api_version}` : "";
-if (msg.status === "reconnected")
-  log(`🟢 Watchdog reconnected: (${msg.addr}) ${name}${model}${apiVer}`);
-else if (msg.status === "disconnected")
-  log(`🟡 Watchdog reconnecting: (${msg.addr}) ${name}${model}${apiVer}`);
+      const apiVer = msg.api_version && msg.api_version !== "?"
+        ? ` — API v${msg.api_version}`
+        : "";
+      if (msg.status === "reconnected")
+        log(`🟢 Watchdog reconnected: (${msg.addr}) ${name}${model}${apiVer}`);
+      else if (msg.status === "disconnected")
+        log(`🟡 Watchdog reconnecting: (${msg.addr}) ${name}${model}${apiVer}`);
       else log(`⚠️ Watchdog: ${msg.status}`);
       break;
     }
@@ -297,8 +305,6 @@ async function toggleSessionDetails(card, sessId) {
   card.classList.add("expanded");
 }
 
-
-
 // ───────────── Title Management ─────────────
 setTitleBtn.addEventListener("click", async () => {
   const newTitle = titleInput.value.trim();
@@ -329,7 +335,9 @@ fetch("/status")
     if (data.connected && data.devices.length > 0) {
       const d = data.devices.find((x) => x.connected);
       currentConnectedDevice = d.address;
-      const apiVer = d.api_version ? ` — API v${d.api_version}` : "";
+      const apiVer = d.api_version && d.api_version !== "?"
+        ? ` — API v${d.api_version}`
+        : "";
       log(`✅ Device connected: ${d.name} (${d.address})${apiVer}`);
       localStorage.setItem("lastDeviceAddr", d.address);
       updateDeviceDropdown(d.address, d.name);

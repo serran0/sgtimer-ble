@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "0.8.1"
+__version__ = "1.0.0"
 
 import asyncio
 import time
@@ -41,7 +41,7 @@ if not os.path.exists(TITLE_FILE):
 # ─────────────────────────────────────────────
 SERVICE_UUID = "7520ffff-14d2-4cda-8b6b-697c554c9311"
 EVENT_UUID = "75200001-14d2-4cda-8b6b-697c554c9311"
-API_VERSION_UUID = "75200002-14d2-4cda-8b6b-697c554c9311"
+API_VERSION_UUID = "7520fffe-14d2-4cda-8b6b-697c554c9311"  # ✅ Corrected UUID
 NAME_PREFIX = "SG-SST"
 
 EVENT_TYPES = {
@@ -212,35 +212,16 @@ class DeviceManager:
 
             # ───────────── Read API version correctly ─────────────
             try:
-                await asyncio.sleep(0.5)  # allow GATT table to populate
-                services = self.client.services
-                if not services:
-                    await self.client.get_services()
-                    services = self.client.services
-
-                api_char = None
-                for service in services:
-                    for char in service.characteristics:
-                        if str(char.uuid).lower() == API_VERSION_UUID:
-                            api_char = char
-                            break
-                    if api_char:
-                        break
-
-                if api_char:
-                    data = await self.client.read_gatt_char(api_char)
-                    if data and len(data) > 4:
-                        version_bytes = data[4:]  # skip 7520FFFE header
-                        decoded = ''.join(chr(b) for b in version_bytes if 32 <= b <= 126).strip()
-                        self.api_version = decoded or "Unknown"
-                    else:
-                        self.api_version = "Unknown"
+                await asyncio.sleep(0.5)
+                data = await self.client.read_gatt_char(API_VERSION_UUID)
+                if data:
+                    decoded = ''.join(chr(b) for b in data if 32 <= b <= 126).strip()
+                    self.api_version = decoded or "Unknown"
                 else:
-                    print("⚠️ API_VERSION characteristic not found.")
-                    self.api_version = "Unavailable"
+                    self.api_version = "Unknown"
             except Exception as e:
                 print(f"⚠️ Could not read API version: {e}")
-                self.api_version = "Unknown"
+                self.api_version = "Unavailable"
 
             print(f"✅ Connected to {self.name} ({self.addr}) [{self.model}] API v{self.api_version}")
 
@@ -261,6 +242,7 @@ class DeviceManager:
         except Exception as e:
             self.connected = False
             await broadcast({"type": "ERROR", "message": f"connect failed: {e}"})
+
 
     async def disconnect(self):
         """Manually stop notifications and disconnect."""
