@@ -1,5 +1,0 @@
-event,shot_num,shot_time,split,ts_device
-SHOT_DETECTED,1,1.750,,1750
-SHOT_DETECTED,2,1.940,,1940
-SHOT_DETECTED,3,2.310,,2310
-SESSION_STOPPED,,,,
