@@ -8,18 +8,25 @@ venv/
 */.venv/
 */venv/
 
-
+# Internal and output folders
 _internal/
 */_internal/
-
 
 output/
 */output/
 
-# Exclude all files in /data/archive but keep folders
-/data/archive/*
-!/data/archive/**/
+# Data folder handling
+# Ignore all files in data but keep the data and data/archive folders
+data/*
+!data/
+!data/archive/
 
+# Ignore all files (and subfolders) inside data/archive
+data/archive/*
+
+# Keep folder placeholders so directories exist even if empty
+!data/.gitkeep
+!data/archive/.gitkeep
 
 # Exclude this .gitignore file itself and other specified files
 .gitignore
