@@ -189,74 +189,111 @@ async function disconnectDevice() {
 
 // ───────────── Session Listing ─────────────
 async function loadSessions(append = false) {
-  if (!append) {
-    // Fade out while reloading
-    sessionsList.style.transition = "opacity 0.3s ease";
-    sessionsList.style.opacity = "0.3";
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    sessionsList.innerHTML = "";
-    offset = 0; // Reset offset when refreshing
-  }
+  if (!append) sessionsList.innerHTML = "";
 
-  try {
-    const res = await fetch(`/sessions?offset=${offset}&limit=${PAGE_SIZE}`);
-    const j = await res.json();
-    const list = j.sessions || [];
+  const res = await fetch(`/sessions?offset=${offset}&limit=${PAGE_SIZE}`);
+  const j = await res.json();
+  const list = j.sessions || [];
 
-    // Add new session cards
-    for (const s of list) {
-      const sessId = s.sess_id;
-      const ts = Number(sessId);
-      const date = new Date(ts * 1000);
-      const year = date.getUTCFullYear();
-      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(date.getUTCDate()).padStart(2, "0");
-      const hours = String(date.getUTCHours()).padStart(2, "0");
-      const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-      const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-      const formatted = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  for (const s of list) {
+    const sessId = s.sess_id;
+    const ts = Number(sessId);
+    const date = new Date(ts * 1000);
+    const formatted = `${date.getUTCFullYear()}-${String(
+      date.getUTCMonth() + 1
+    ).padStart(2, "0")}-${String(date.getUTCDate()).padStart(
+      2,
+      "0"
+    )} ${String(date.getUTCHours()).padStart(2, "0")}:${String(
+      date.getUTCMinutes()
+    ).padStart(2, "0")}:${String(date.getUTCSeconds()).padStart(2, "0")}`;
 
-      const shots = s.total_shots || 0;
-      const best = s.best_split ? s.best_split.toFixed(2) : "0.00";
-      const totalTime = s.total_time ? s.total_time.toFixed(2) : "—";
+    const shots = s.total_shots || 0;
+    const best = s.best_split ? s.best_split.toFixed(2) : "0.00";
+    const totalTime = s.total_time ? s.total_time.toFixed(2) : "—";
 
-      const card = document.createElement("div");
-      card.className = "session-card";
-      card.innerHTML = `
-        <div class="session-main">
-          <div class="session-title">
-            Session ${sessId} — ${formatted}
-          </div>
+    const card = document.createElement("div");
+    card.className = "session-card";
+    card.dataset.sessId = sessId;
+
+    card.innerHTML = `
+      <div class="session-main">
+        <div class="session-left">
+          <div class="session-title">Session ${sessId} — ${formatted}</div>
           <div class="session-meta">
-            <span>Shots: <b>${shots}</b> - Time: <b>${totalTime}</b>s</span>
-            <span>Best Split: <b>${best}</b></span>
+            Shots: <b>${shots}</b> — Time: <b>${totalTime}</b>s — Best Split: <b>${best}</b>
           </div>
         </div>
         <div class="session-actions">
           <a class="btn btn-small" href="/download/${sessId}">⬇ Download CSV</a>
-        </div>`;
-      sessionsList.appendChild(card);
-    }
+        </div>
+      </div>
+    `;
 
-    // Fade back in
-    sessionsList.style.opacity = "1";
-
-    // Update pagination state
-    const loadedCount = offset + list.length;
-    const hasMore = list.length === PAGE_SIZE; // if we got a full page, assume more exist
-
-    offset = loadedCount;
-
-    // Toggle "Show next 20" visibility properly
-    if (hasMore) {
-      loadMoreBtn.style.display = "inline-block";
-    } else {
-      loadMoreBtn.style.display = "none";
-    }
-  } catch (err) {
-    console.error("Error loading sessions:", err);
+    card.addEventListener("click", () => toggleSessionDetails(card, sessId));
+    sessionsList.appendChild(card);
   }
+
+  offset += list.length;
+  loadMoreBtn.style.display = list.length === PAGE_SIZE ? "inline-block" : "none";
 }
+
+// ───────────── Expand/Collapse Session Details ─────────────
+async function toggleSessionDetails(card, sessId) {
+  document.querySelectorAll(".session-card.expanded").forEach((c) => {
+    if (c !== card) {
+      c.classList.remove("expanded");
+      const details = c.querySelector(".session-extra");
+      if (details) details.remove();
+    }
+  });
+
+  if (card.classList.contains("expanded")) {
+    card.classList.remove("expanded");
+    const details = card.querySelector(".session-extra");
+    if (details) details.remove();
+    return;
+  }
+
+  const res = await fetch(`/download/${sessId}`);
+  const csvText = await res.text();
+  const lines = csvText.split("\n").slice(1).filter((l) => l.trim());
+  const shots = lines
+    .map((l) => {
+      const p = l.split(",");
+      if (p[0] !== "SHOT_DETECTED") return null;
+      return {
+        num: p[1],
+        time: parseFloat(p[2]).toFixed(2).replace(/\.?0+$/, ""),
+        split: p[3]
+          ? parseFloat(p[3]).toFixed(2).replace(/\.?0+$/, "")
+          : "",
+      };
+    })
+    .filter(Boolean);
+
+  const shotHTML = shots.length
+    ? shots
+        .map(
+          (s) =>
+            `<span class="shot-line">#${s.num} — Time: ${s.time}${
+              s.split ? ` [Split: ${s.split}]` : ""
+            }</span>`
+        )
+        .join(" ")
+    : "<i>No shot data available</i>";
+
+  const extra = document.createElement("div");
+  extra.className = "session-extra";
+  extra.innerHTML = `
+    <hr class="session-divider">
+    <div class="shot-container">${shotHTML}</div>
+  `;
+
+  card.appendChild(extra);
+  card.classList.add("expanded");
+}
+
 
 
 // ───────────── Title Management ─────────────
