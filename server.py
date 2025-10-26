@@ -37,7 +37,6 @@ if not os.path.exists(TITLE_FILE):
     with open(TITLE_FILE, "w") as f:
         f.write("SG Timer")
 
-
 # ─────────────────────────────────────────────
 # Ensure settings.ini exists (create or extract default)
 # ─────────────────────────────────────────────
@@ -72,8 +71,6 @@ try:
         print(f"ℹ️ Using existing settings.ini at {SETTINGS_FILE}")
 except Exception as e:
     print(f"⚠️ Could not initialize settings.ini: {e}")
-
-
 
 # ─────────────────────────────────────────────
 # BLE service details
@@ -281,7 +278,6 @@ class DeviceManager:
         except Exception as e:
             self.connected = False
             await broadcast({"type": "ERROR", "message": f"connect failed: {e}"})
-
 
     async def disconnect(self):
         """Manually stop notifications and disconnect."""
@@ -529,8 +525,7 @@ if __name__ == "__main__":
     import uvicorn
     import configparser
 
-  
-  print(f"Starting SG Timer BLE Server v{__version__}...")
+    print(f"Starting SG Timer BLE Server v{__version__}...")
 
     # ───────────── Load settings.ini ─────────────
     config = configparser.ConfigParser()
