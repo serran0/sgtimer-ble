@@ -491,13 +491,44 @@ if __name__ == "__main__":
     import uvicorn
     import configparser
 
-    print(f"Starting SG Timer BLE Server v{__version__}...")
+  
+
+
+
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.ini")
+DEFAULT_SETTINGS = """[network]
+host = 0.0.0.0
+port = 8080
+"""
+
+# If file doesn't exist, create or extract default version
+if not os.path.exists(SETTINGS_FILE):
+    try:
+        # If bundled version exists in _MEIPASS, copy it
+        if getattr(sys, "frozen", False):
+            src_path = os.path.join(sys._MEIPASS, "settings.ini")
+            if os.path.exists(src_path):
+                shutil.copyfile(src_path, SETTINGS_FILE)
+            else:
+                # Fall back to generating one
+                with open(SETTINGS_FILE, "w") as f:
+                    f.write(DEFAULT_SETTINGS)
+        else:
+            # Running from source → just create default one
+            with open(SETTINGS_FILE, "w") as f:
+                f.write(DEFAULT_SETTINGS)
+        print(f"✅ Created settings.ini at {SETTINGS_FILE}")
+    except Exception as e:
+        print(f"⚠️ Could not create settings.ini: {e}")
+
+
+  print(f"Starting SG Timer BLE Server v{__version__}...")
 
     # ───────────── Load settings.ini ─────────────
     config = configparser.ConfigParser()
     settings_path = os.path.join(BASE_DIR, "settings.ini")
     host = "0.0.0.0"
-    port = 8000
+    port = 8080
 
     if os.path.exists(settings_path):
         config.read(settings_path)
