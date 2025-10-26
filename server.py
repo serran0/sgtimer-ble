@@ -37,6 +37,44 @@ if not os.path.exists(TITLE_FILE):
     with open(TITLE_FILE, "w") as f:
         f.write("SG Timer")
 
+
+# ─────────────────────────────────────────────
+# Ensure settings.ini exists (create or extract default)
+# ─────────────────────────────────────────────
+import configparser
+
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.ini")
+DEFAULT_SETTINGS = """[network]
+host = 0.0.0.0
+port = 8080
+"""
+
+try:
+    # Check if it already exists
+    if not os.path.exists(SETTINGS_FILE):
+        if getattr(sys, "frozen", False):
+            # Running as EXE → try to copy bundled one from _MEIPASS
+            possible_src = os.path.join(sys._MEIPASS, "settings.ini")
+            if os.path.exists(possible_src):
+                shutil.copy(possible_src, SETTINGS_FILE)
+                print(f"✅ Extracted default settings.ini from bundle → {SETTINGS_FILE}")
+            else:
+                # Fallback → create new file with defaults
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                    f.write(DEFAULT_SETTINGS)
+                print(f"✅ Created new default settings.ini → {SETTINGS_FILE}")
+        else:
+            # Running from source → create default file
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                f.write(DEFAULT_SETTINGS)
+            print(f"✅ Created new default settings.ini → {SETTINGS_FILE}")
+    else:
+        print(f"ℹ️ Using existing settings.ini at {SETTINGS_FILE}")
+except Exception as e:
+    print(f"⚠️ Could not initialize settings.ini: {e}")
+
+
+
 # ─────────────────────────────────────────────
 # BLE service details
 # ─────────────────────────────────────────────
@@ -492,36 +530,6 @@ if __name__ == "__main__":
     import configparser
 
   
-
-
-
-SETTINGS_FILE = os.path.join(BASE_DIR, "settings.ini")
-DEFAULT_SETTINGS = """[network]
-host = 0.0.0.0
-port = 8080
-"""
-
-# If file doesn't exist, create or extract default version
-if not os.path.exists(SETTINGS_FILE):
-    try:
-        # If bundled version exists in _MEIPASS, copy it
-        if getattr(sys, "frozen", False):
-            src_path = os.path.join(sys._MEIPASS, "settings.ini")
-            if os.path.exists(src_path):
-                shutil.copyfile(src_path, SETTINGS_FILE)
-            else:
-                # Fall back to generating one
-                with open(SETTINGS_FILE, "w") as f:
-                    f.write(DEFAULT_SETTINGS)
-        else:
-            # Running from source → just create default one
-            with open(SETTINGS_FILE, "w") as f:
-                f.write(DEFAULT_SETTINGS)
-        print(f"✅ Created settings.ini at {SETTINGS_FILE}")
-    except Exception as e:
-        print(f"⚠️ Could not create settings.ini: {e}")
-
-
   print(f"Starting SG Timer BLE Server v{__version__}...")
 
     # ───────────── Load settings.ini ─────────────
