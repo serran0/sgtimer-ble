@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
+import configparser
 import asyncio
 import time
 import os
@@ -488,9 +489,26 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
+    import configparser
 
     print(f"Starting SG Timer BLE Server v{__version__}...")
+
+    # ───────────── Load settings.ini ─────────────
+    config = configparser.ConfigParser()
+    settings_path = os.path.join(BASE_DIR, "settings.ini")
+    host = "0.0.0.0"
+    port = 8000
+
+    if os.path.exists(settings_path):
+        config.read(settings_path)
+        if "network" in config:
+            host = config["network"].get("host", host)
+            port = config["network"].getint("port", port)
+
+    print(f"🌐 Running on http://{host}:{port}")
+
+    # ───────────── Start server ─────────────
     if getattr(sys, "frozen", False):
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+        uvicorn.run(app, host=host, port=port, log_level="info")
     else:
-        uvicorn.run("server:app", host="0.0.0.0", port=8000, log_level="debug", reload=True)
+        uvicorn.run("server:app", host=host, port=port, log_level="debug", reload=True)
