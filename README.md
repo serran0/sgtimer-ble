@@ -1,3 +1,3 @@
-👉 [Download from Releases](./releases)
+👉 [Download from Releases](../releases)
 
 Talk to Timur
