@@ -16,6 +16,26 @@
   }
   /* Solid dark fallback when stream is unavailable */
   body { background-color: #111; }
+
+  /* Audio mute/unmute button – bottom-right corner */
+  #audioBtn {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    z-index: 10;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+    line-height: 38px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+  }
+  #audioBtn:hover { background: rgba(255,255,255,0.15); }
 </style>
 </head>
 <body class="display-page">
@@ -28,6 +48,13 @@
   -->
   <img id="cameraBg" src="/camera" alt=""
        onerror="this.style.display='none'" />
+
+  <!--
+    Audio stream from the iOS device's microphone.
+    Starts muted to satisfy browser autoplay policy; user unmutes via button.
+  -->
+  <audio id="audioEl" src="/audio" autoplay muted playsinline></audio>
+  <button id="audioBtn" title="Unmute audio" onclick="toggleAudio()">🔇</button>
 
   <div id="display">
     <div id="competitionTitle">SG Timer</div>
@@ -49,5 +76,45 @@
   </div>
 
   <script src="js/app.js"></script>
+  <script>
+    // ── Audio stream controls ──────────────────────────────────────
+    const audioEl  = document.getElementById('audioEl');
+    const audioBtn = document.getElementById('audioBtn');
+
+    function toggleAudio() {
+      if (audioEl.muted) {
+        audioEl.muted = false;
+        audioEl.play().catch(() => { audioEl.muted = true; });
+      } else {
+        audioEl.muted = true;
+      }
+      audioBtn.textContent = audioEl.muted ? '🔇' : '🔊';
+    }
+
+    // Reconnect audio stream if it stalls or errors
+    function reconnectAudio() {
+      const wasMuted = audioEl.muted;
+      audioEl.src = '';
+      setTimeout(() => {
+        audioEl.src = '/audio';
+        audioEl.muted = wasMuted;
+        audioEl.play().catch(() => {});
+      }, 2000);
+    }
+
+    audioEl.addEventListener('error',  reconnectAudio);
+    audioEl.addEventListener('ended',  reconnectAudio);
+    audioEl.addEventListener('stalled', () => {
+      // Only reconnect if we actually wanted audio
+      if (!audioEl.muted) reconnectAudio();
+    });
+
+    // If the audio endpoint is absent (Python server), hide the button
+    audioEl.addEventListener('error', () => {
+      if (audioEl.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
+        audioBtn.style.display = 'none';
+      }
+    }, { once: true });
+  </script>
 </body>
 </html>

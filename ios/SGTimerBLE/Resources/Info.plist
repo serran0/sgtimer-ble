@@ -26,6 +26,8 @@
     <string>SGTimer BLE uses Bluetooth to connect to SG Timer devices and receive shot timing events.</string>
     <key>NSCameraUsageDescription</key>
     <string>SGTimer BLE streams the camera as a live background on the display page for connected clients.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SGTimer BLE streams microphone audio to connected display clients so the audience can hear the range.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>SGTimer BLE runs a local web server so clients on your Wi-Fi can view the timer display.</string>
     <key>NSBonjourServices</key>

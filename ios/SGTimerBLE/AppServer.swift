@@ -3,8 +3,9 @@ import Swifter
 
 class AppServer: ObservableObject {
     // MARK: - Sub-components
-    let ble     = BLEManager()
-    let camera  = CameraStreamer()
+    let ble      = BLEManager()
+    let camera   = CameraStreamer()
+    let audio    = AudioStreamer()
     let sessions = SessionsStore()
 
     // MARK: - Published state
@@ -32,6 +33,7 @@ class AppServer: ObservableObject {
 
     func startServer(port: UInt16 = 8080) {
         try? camera.start()
+        try? audio.start()
         do {
             try http.start(port, forceIPv4: true)
             DispatchQueue.main.async {
@@ -46,6 +48,7 @@ class AppServer: ObservableObject {
     func stopServer() {
         http.stop()
         camera.stop()
+        audio.stop()
         DispatchQueue.main.async { self.isRunning = false }
     }
 
@@ -168,6 +171,27 @@ class AppServer: ObservableObject {
                         }
                     }
                     Thread.sleep(forTimeInterval: 1.0 / 25.0)
+                }
+            }
+        }
+
+        // ── AAC/ADTS audio stream ──────────────────────────────
+        http.GET["/audio"] = { [weak self] _ in
+            guard let self else { return .internalServerError }
+            let (subId, sub) = self.audio.subscribe()
+            return .raw(200, "OK", [
+                "Content-Type":  "audio/aac",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Connection":    "keep-alive"
+            ]) { [weak self] writer in
+                defer { self?.audio.unsubscribe(subId) }
+                while true {
+                    guard let frame = sub.next(timeout: 0.5) else { continue }
+                    do {
+                        try writer.write(frame)
+                    } catch {
+                        break // client disconnected
+                    }
                 }
             }
         }
