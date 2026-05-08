@@ -1,0 +1,215 @@
+body {
+  background-color: rgba(0, 0, 0, 1);
+  color: #fff;
+  font-family: Verdana, sans-serif;
+  margin: 0;
+}
+
+/* Buttons */
+.btn {
+  background: #0ff;
+  color: #000;
+  border: none;
+  padding: 8px 12px;
+  margin: 4px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn:hover { background: #0cc; }
+.btn-secondary { background: #444; color: #fff; }
+
+/* Logs */
+#log {
+  background: #000;
+  padding: 10px;
+  margin: 10px;
+  height: 180px;
+  overflow: auto;
+  border: 1px solid #333;
+  white-space: pre-wrap;   /* <-- preserve newlines */
+}
+
+/* ───────────── Display ───────────── */
+#display {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+           /* true black */
+  padding: 25px;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #fff;
+  font-family: Verdana, sans-serif;
+}
+
+/* Title */
+#competitionTitle {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 2.7vw;           /* increased for visibility */
+  font-weight: bold;
+}
+
+/* Connection Indicator */
+.status-dot {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+.status-dot.connected { background: #0f0; }
+.status-dot.disconnected { background: #f00; }
+.status-dot.standby { background: #ff0; }
+
+/* ───────────── Top-Left Session Info ───────────── */
+
+#sessionInfo {
+  position: absolute;
+  top: 25%;                        /* aligns with top of shots area */
+  left: 25px;
+  background: rgba(0, 0, 0, 0.4);  /* 50% transparent black box */
+  padding: 12px 20px;
+  border-radius: 6px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;                       /* space between lines */
+  align-items: flex-start;
+  min-width: 180px;
+}
+
+#sessionInfo div {
+  position: static;                /* remove absolute positioning */
+  font-size: 1.7vw;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+
+/* ───────────── Shots Area ───────────── */
+#shotsContainer {
+  position: absolute;
+  top: 25%;
+  right: 25px;
+  width: 40%;
+  height: 75%;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+/* shot list */
+#shots {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  width: 100%;
+  gap: 4px;
+  overflow-y: hidden;
+}
+
+/* ───────────── Bottom Fade Overlay ───────────── */
+#shotsContainer::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  height: 25%; /* fade depth */
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 100%);
+}
+
+
+#shots::-webkit-scrollbar { display: none; }  /* hide scrollbar in Chrome */
+
+/* shot & split text (20% smaller) */
+.shot-line {
+  font-size: 2.2vw;
+  color: #fff;
+  opacity: 1;
+  line-height: 1.2;
+}
+
+.split-line {
+  font-size: 1.2vw;
+  color: #bbb;
+  opacity: 0.9;
+  line-height: 1.1;
+}
+/* remove fade overlay */
+.fadeOverlay {
+  display: none;
+}
+
+/* Session Status */
+#status {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: 22px;
+  font-weight: bold;
+}
+#status.live { color: #0f0; }
+#status.standby { color: #ff0; }
+#status.stopped { color: #f00; }
+
+/* ───────────── Admin Sessions ───────────── */
+.sessions-list {
+  margin: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.session-card {
+  background: #1a1a1a;
+  padding: 10px;
+  border: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+}
+.session-title { font-weight: bold; }
+
+.sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 20px 0 10px 0;
+}
+
+.sessions-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+#refreshSessionsBtn {
+  font-size: 14px;
+  padding: 8px 12px;
+  background: #444;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+#refreshSessionsBtn:hover {
+  background: #666;
+}
+
+
+#display, 
+#display * {
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+}
