@@ -297,16 +297,20 @@ class AppServer: ObservableObject {
 
     // MARK: - Static files
 
-    // url(forResource:withExtension:) is unreliable for directories on iOS;
-    // construct the path directly from the bundle URL instead.
     private lazy var staticBase: URL = {
-        let bundle = Bundle.main.bundleURL.appendingPathComponent("static")
-        if FileManager.default.fileExists(atPath: bundle.path) { return bundle }
-        // Fallback: resourceURL (same on iOS, different on macOS)
+        let bundleURL = Bundle.main.bundleURL
+        // Log bundle contents once to diagnose copy issues
+        let bundleContents = (try? FileManager.default.contentsOfDirectory(atPath: bundleURL.path))?.sorted() ?? []
+        print("📦 Bundle contents: \(bundleContents)")
+
+        let direct = bundleURL.appendingPathComponent("static")
+        if FileManager.default.fileExists(atPath: direct.path) { return direct }
+
         if let res = Bundle.main.resourceURL?.appendingPathComponent("static"),
            FileManager.default.fileExists(atPath: res.path) { return res }
-        print("⚠️ SGTimer: static/ folder not found in bundle at \(bundle.path)")
-        return bundle // return anyway; individual file reads will fail gracefully
+
+        print("⚠️ SGTimer: static/ not found. Bundle: \(bundleURL.path)")
+        return direct
     }()
 
     private func serveStatic(path: String) -> HttpResponse {
