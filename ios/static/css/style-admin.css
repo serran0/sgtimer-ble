@@ -1,0 +1,363 @@
+/* ───────────── Global ───────────── */
+body {
+  background-color: #121212;
+  color: #f0f0f0;
+  font-family: Verdana, sans-serif;
+  margin: 25px;
+  line-height: 1.5;
+}
+
+/* ───────────── Buttons ───────────── */
+.btn {
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  background: linear-gradient(135deg, #FFA733, #FF5C00);
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(255, 140, 0, 0.3);
+  transition: all 0.25s ease-in-out;
+}
+
+.btn:hover {
+  background: linear-gradient(135deg, #FFC266, #FF6A1A);
+  box-shadow: 0 0 12px rgba(255, 102, 0, 0.6);
+}
+
+/* ───────────── Title Section ───────────── */
+#titleSection {
+  margin-top: 30px;
+}
+#titleSection h2 {
+  margin-bottom: 10px;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ───────────── Title Input ───────────── */
+#titleInput {
+  background: #1c1c1c;
+  color: #fff6e8;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 16px;
+  font-weight: bold;
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  letter-spacing: 0.3px;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5),
+              0 0 6px rgba(255, 120, 0, 0.15);
+  outline: none;
+  width: 450px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  transition: all 0.25s ease;
+}
+#titleInput:focus {
+  border-color: #FFA733;
+  box-shadow: 0 0 8px rgba(255, 120, 0, 0.5),
+              inset 0 0 4px rgba(255, 165, 0, 0.3);
+  background: #222;
+}
+#titleInput::placeholder {
+  color: rgba(255, 200, 120, 0.5);
+  font-style: italic;
+}
+
+/* ───────────── Logs ───────────── */
+#log {
+  background: #181818;
+  color: #e0e0e0;
+  padding: 12px;
+  height: 300px;
+  overflow: auto;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.4);
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+
+/* ───────────── Headers ───────────── */
+h2 {
+  margin: 0 0 10px 0;
+  margin-top: 20px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #FFA733;
+  text-shadow: 0 0 6px rgba(255, 165, 0, 0.2);
+}
+
+/* ───────────── Session Header ───────────── */
+.sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 25px 0 10px 0;
+}
+
+/* ───────────── Session List ───────────── */
+.sessions-list {
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ───────────── Session Card ───────────── */
+.session-card {
+  background: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+  padding: 16px 20px;
+  position: relative;
+}
+.session-card:hover {
+  box-shadow: 0 0 14px rgba(255, 120, 0, 0.25),
+              0 0 6px rgba(255, 100, 0, 0.15);
+}
+.session-card.expanded {
+  background: #262626;
+  box-shadow: 0 0 16px rgba(255, 120, 0, 0.25);
+}
+
+/* ───────────── Session Main Layout ───────────── */
+.session-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+.session-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-title {
+  font-weight: bold;
+  color: #fff;
+}
+.session-meta {
+  color: #ccc;
+  font-size: 14px;
+}
+
+/* ───────────── Session Actions ───────────── */
+.session-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.session-actions a.btn {
+  padding: 6px 10px;
+  font-size: 13px;
+  background: linear-gradient(135deg, #FF7E29, #C23A00);
+  color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 0 4px rgba(255, 100, 0, 0.3);
+  text-decoration: none;
+}
+.session-actions a.btn:hover {
+  background: linear-gradient(135deg, #FF9E50, #E04A00);
+  box-shadow: 0 0 8px rgba(255, 120, 0, 0.5);
+}
+
+/* ───────────── Refresh & Clear Buttons ───────────── */
+#refreshSessionsBtn {
+  background: linear-gradient(135deg, #FF9E32, #FF5200);
+  color: #fff;
+  border: none;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(255, 120, 0, 0.3);
+  transition: all 0.25s ease-in-out;
+}
+#refreshSessionsBtn:hover {
+  background: linear-gradient(135deg, #FFC266, #FF6A1A);
+  box-shadow: 0 0 12px rgba(255, 120, 0, 0.6);
+}
+
+/* ───────────── Clear Sessions Button ───────────── */
+#clearSessionsBtn {
+  background: linear-gradient(135deg, #5a1a1a, #3a0f0f);
+  color: #ff9090;
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 6px;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+#clearSessionsBtn:hover {
+  background: linear-gradient(135deg, #7a2020, #5a1010);
+  border-color: rgba(255, 80, 80, 0.6);
+  box-shadow: 0 0 8px rgba(255, 60, 60, 0.4);
+}
+
+/* ───────────── Quick Controls (Settings + Lens) ───────────── */
+.quick-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.lens-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quick-label {
+  font-size: 13px;
+  color: #aaa;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ───────────── Lens Buttons ───────────── */
+.lens-btn {
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.07);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 5px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lens-btn.active {
+  background: rgba(255, 167, 51, 0.85);
+  color: #000;
+  border-color: #FFA733;
+  box-shadow: 0 0 6px rgba(255, 140, 0, 0.4);
+}
+.lens-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ───────────── Server Settings Section ───────────── */
+#serverSettingsSection {
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 12px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.settings-row label {
+  min-width: 160px;
+  font-size: 14px;
+  color: #ccc;
+  font-weight: 600;
+}
+.settings-row input[type="number"] {
+  background: #1c1c1c;
+  color: #fff6e8;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  width: 100px;
+  outline: none;
+}
+.settings-row input[type="number"]:focus {
+  border-color: #FFA733;
+  box-shadow: 0 0 6px rgba(255, 120, 0, 0.4);
+}
+
+/* ───────────── FPS Buttons ───────────── */
+.fps-btn {
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.07);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.fps-btn.active {
+  background: rgba(255, 167, 51, 0.85);
+  color: #000;
+  border-color: #FFA733;
+  box-shadow: 0 0 6px rgba(255, 140, 0, 0.4);
+}
+.fps-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ───────────── Session Expansion ───────────── */
+.session-extra {
+  margin-top: 10px;
+  font-family: "Fira Code", "Courier New", monospace;
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.5;
+  animation: expandCard 0.3s ease;
+}
+.session-divider {
+  border: none;
+  border-top: 1px dashed #444;
+  margin: 10px 0 8px 0;
+}
+.shot-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.shot-line {
+  white-space: nowrap;
+  font-size: 13px;
+  color: #ddd;
+}
+.shot-line::after {
+  content: " | ";
+  color: #666;
+  margin-left: 6px;
+}
+.shot-line:last-child::after { content: ""; }
+
+@keyframes expandCard {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ───────────── Scrollbar Styling ───────────── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 120, 0, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 120, 0, 0.6);
+}

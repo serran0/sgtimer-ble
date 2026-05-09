@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SG Timer Admin</title>
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/style-admin.css">
+
+</head>
+<body>
+  <h1>SG Timer Admin Panel</h1>
+  <div id="controls">
+    <button id="scanBtn" class="btn">🔍 Scan</button>
+    <select id="deviceSelect"></select>
+    <button id="connectBtn" class="btn">🔗 Connect</button>
+    <button id="disconnectBtn" class="btn btn-secondary">⛔ Disconnect</button>
+  </div>
+
+  <!-- Quick controls: Server Settings toggle + Lens selector -->
+  <div class="quick-controls">
+    <button id="settingsToggleBtn" class="btn">⚙️ Server Settings</button>
+    <div class="lens-panel" id="lensPanel">
+      <span class="quick-label">Lens:</span>
+      <div id="lensButtons"></div>
+    </div>
+  </div>
+
+  <!-- Server Settings collapsible section -->
+  <section id="serverSettingsSection" style="display:none;">
+    <h2>Server Settings</h2>
+    <div class="settings-row">
+      <label>FPS</label>
+      <div id="fpsButtons">
+        <button class="fps-btn" data-fps="15">15 fps</button>
+        <button class="fps-btn" data-fps="30">30 fps</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <label for="syncDelayInput">A/V Sync Delay (ms)</label>
+      <input id="syncDelayInput" type="number" min="0" max="2000" step="10" value="300">
+    </div>
+    <div class="settings-row">
+      <button id="saveSettingsBtn" class="btn">💾 Save Settings</button>
+      <button id="restartServerBtn" class="btn" style="margin-left:8px; background: linear-gradient(135deg,#c0392b,#922b21);">🔄 Restart Server</button>
+    </div>
+  </section>
+
+  <section id="titleSection">
+  <h2>Main Title</h2>
+  <div class="title-row">
+    <input id="titleInput" type="text" placeholder="Enter title...">
+    <button id="setTitleBtn" class="btn">Set Title</button>
+  </div>
+</section>
+
+
+  <section id="consoleSection">
+  <h2>Console</h2>
+  <div id="log"></div>
+  </section>
+
+  <section id="sessionsSection">
+    <div class="sessions-header">
+  <h2>Past Sessions</h2>
+  <div class="session-controls">
+    <button id="refreshSessionsBtn" class="btn">🔄 Refresh Sessions</button>
+    <button id="clearSessionsBtn" class="btn clear-btn">🗑️ Clear All Sessions</button>
+  </div>
+</div>
+    <div id="sessionsList" class="sessions-list"></div>
+    <div class="pagination">
+      <button id="loadMoreBtn" class="btn">Show next 20 sessions</button>
+    </div>
+  </section>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

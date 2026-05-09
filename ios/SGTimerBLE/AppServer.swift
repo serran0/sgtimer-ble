@@ -12,6 +12,9 @@ class AppServer: ObservableObject {
     @Published var isRunning = false
     @Published var localIP: String = "–"
     @Published var cameraFPS: Double = 30
+    @Published var avSyncDelayMs: Int = 300
+    @Published var availableLenses: [LensOption] = []
+    @Published var currentLensId: String = "wide"
 
     // MARK: - Internal
     private let http = HttpServer()
@@ -24,6 +27,7 @@ class AppServer: ObservableObject {
     private let audioBatchLock = NSLock()
     private let audioBatchSize = 4   // ~92 ms per WS message
     private let stateLock = NSLock()
+    private var serverGeneration: Int = Int(Date().timeIntervalSince1970)
 
     private var timerState = TimerState()
     private var lastTimerState: [String: Any]? = nil
@@ -32,7 +36,9 @@ class AppServer: ObservableObject {
     // MARK: - Init
 
     init() {
+        loadSettings()
         ble.onEvent = { [weak self] event in self?.handleBLEEvent(event) }
+        availableLenses = CameraStreamer.availableLenses()
         setupRoutes()
     }
 
@@ -85,6 +91,49 @@ class AppServer: ObservableObject {
         DispatchQueue.main.async { self.isRunning = false }
     }
 
+    func handleForeground() {
+        guard isRunning else {
+            startServer()
+            return
+        }
+        // New generation so browsers detect the restart and reload
+        serverGeneration = Int(Date().timeIntervalSince1970)
+        broadcast(["type": "RELOAD"])
+    }
+
+    // MARK: - Settings persistence
+
+    private func loadSettings() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "cameraFPS") != nil {
+            cameraFPS = defaults.double(forKey: "cameraFPS")
+        }
+        if defaults.object(forKey: "avSyncDelayMs") != nil {
+            avSyncDelayMs = defaults.integer(forKey: "avSyncDelayMs")
+        }
+        if let lens = defaults.string(forKey: "currentLensId") {
+            currentLensId = lens
+        }
+    }
+
+    func saveSettings() {
+        let defaults = UserDefaults.standard
+        defaults.set(cameraFPS, forKey: "cameraFPS")
+        defaults.set(avSyncDelayMs, forKey: "avSyncDelayMs")
+        defaults.set(currentLensId, forKey: "currentLensId")
+    }
+
+    // MARK: - Lens switching
+
+    func setLens(id: String) {
+        let lenses = CameraStreamer.availableLenses()
+        guard let lens = lenses.first(where: { $0.id == id }) else { return }
+        try? camera.switchLens(to: lens.deviceType)
+        currentLensId = id
+        saveSettings()
+        broadcast(["type": "LENS_CHANGED", "lensId": id])
+    }
+
     // MARK: - A/V WebSocket hub
 
     private func broadcastAV(_ bytes: [UInt8]) {
@@ -114,8 +163,18 @@ class AppServer: ObservableObject {
     private func onConnect(_ session: WebSocketSession) {
         addClient(session)
 
+        // Send server generation so browsers can detect restarts
+        if let t = jsonString(["type": "SERVER_HELLO", "serverGen": serverGeneration]) {
+            session.writeText(t)
+        }
+
         // Send current title
         if let t = jsonString(["type": "TITLE_UPDATE", "title": title]) {
+            session.writeText(t)
+        }
+
+        // Send current settings
+        if let t = jsonString(settingsDict()) {
             session.writeText(t)
         }
 
@@ -129,6 +188,15 @@ class AppServer: ObservableObject {
         if let state, let t = jsonString(["type": "SESSION_SYNC", "state": state]) {
             session.writeText(t)
         }
+    }
+
+    private func settingsDict() -> [String: Any] {
+        [
+            "type": "SETTINGS_UPDATE",
+            "fps": Int(cameraFPS),
+            "avSyncDelayMs": avSyncDelayMs,
+            "currentLensId": currentLensId
+        ]
     }
 
     // MARK: - BLE event dispatch
@@ -310,16 +378,74 @@ class AppServer: ObservableObject {
             return self.json(["status": "ok", "title": t])
         }
 
+        // ── GET /get_settings ──────────────────────────────────
+        http.GET["/get_settings"] = { [weak self] _ in
+            guard let self else { return .internalServerError }
+            return self.json([
+                "fps": Int(self.cameraFPS),
+                "avSyncDelayMs": self.avSyncDelayMs,
+                "currentLensId": self.currentLensId
+            ])
+        }
+
+        // ── POST /save_settings ────────────────────────────────
+        http.POST["/save_settings"] = { [weak self] req in
+            guard let self, let body = jsonDict(req.body) else {
+                return .badRequest(.text("Invalid body"))
+            }
+            if let fps = body["fps"] as? Int, fps == 15 || fps == 30 {
+                DispatchQueue.main.async { self.cameraFPS = Double(fps) }
+            }
+            if let delay = body["avSyncDelayMs"] as? Int, delay >= 0 {
+                DispatchQueue.main.async { self.avSyncDelayMs = delay }
+            }
+            self.saveSettings()
+            let updated: [String: Any] = [
+                "type": "SETTINGS_UPDATE",
+                "fps": Int(self.cameraFPS),
+                "avSyncDelayMs": self.avSyncDelayMs,
+                "currentLensId": self.currentLensId
+            ]
+            self.broadcast(updated)
+            return self.json(["status": "ok"])
+        }
+
+        // ── POST /restart_server ───────────────────────────────
+        http.POST["/restart_server"] = { [weak self] _ in
+            guard let self else { return .internalServerError }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.stopServer()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.startServer()
+                }
+            }
+            return self.json(["status": "restarting"])
+        }
+
+        // ── GET /get_lenses ────────────────────────────────────
+        http.GET["/get_lenses"] = { [weak self] _ in
+            guard let self else { return .internalServerError }
+            let lenses = CameraStreamer.availableLenses().map { ["id": $0.id, "label": $0.label] }
+            return self.json(["lenses": lenses, "current": self.currentLensId])
+        }
+
+        // ── POST /set_lens ─────────────────────────────────────
+        http.POST["/set_lens"] = { [weak self] req in
+            guard let self,
+                  let body = jsonDict(req.body),
+                  let id = body["id"] as? String else {
+                return .badRequest(.text("Missing id"))
+            }
+            self.setLens(id: id)
+            return self.json(["status": "ok", "lensId": id])
+        }
+
         // ── POST /clear_sessions ───────────────────────────────
         http.POST["/clear_sessions"] = { [weak self] _ in
             guard let self else { return .internalServerError }
-            stateLock.lock(); lastTimerState = nil; stateLock.unlock()
-            let (moved, ts) = self.sessions.clearSessions()
-            return self.json([
-                "status": "ok",
-                "archived": moved,
-                "archive_dir": "data/archive/\(ts)"
-            ])
+            self.stateLock.lock(); self.lastTimerState = nil; self.stateLock.unlock()
+            let deleted = self.sessions.clearSessions()
+            return self.json(["status": "ok", "deleted": deleted])
         }
 
         // ── GET /sessions ──────────────────────────────────────
