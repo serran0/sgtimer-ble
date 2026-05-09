@@ -65,7 +65,7 @@ class AppServer: ObservableObject {
     private func broadcast(_ dict: [String: Any]) {
         guard let text = jsonString(dict) else { return }
         wsLock.lock(); let clients = wsClients; wsLock.unlock()
-        for c in clients { try? c.writeText(text) }
+        for c in clients { c.writeText(text) }
     }
 
     private func onConnect(_ session: WebSocketSession) {
@@ -73,7 +73,7 @@ class AppServer: ObservableObject {
 
         // Send current title
         if let t = jsonString(["type": "TITLE_UPDATE", "title": title]) {
-            try? session.writeText(t)
+            session.writeText(t)
         }
 
         // Send session sync
@@ -84,7 +84,7 @@ class AppServer: ObservableObject {
         stateLock.unlock()
 
         if let state, let t = jsonString(["type": "SESSION_SYNC", "state": state]) {
-            try? session.writeText(t)
+            session.writeText(t)
         }
     }
 
