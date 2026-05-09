@@ -19,6 +19,10 @@ class AppServer: ObservableObject {
     private let wsLock = NSLock()
     private var avClients = [WebSocketSession]()
     private let avLock = NSLock()
+    private let avWriteQueue = DispatchQueue(label: "av.write", qos: .userInteractive)
+    private var audioBatch = [[UInt8]]()
+    private let audioBatchLock = NSLock()
+    private let audioBatchSize = 4   // ~92 ms per WS message
     private let stateLock = NSLock()
 
     private var timerState = TimerState()
@@ -47,8 +51,17 @@ class AppServer: ObservableObject {
         }
         audio.onFrame = { [weak self] adts in
             guard let self else { return }
-            var msg = [UInt8](); msg.reserveCapacity(adts.count + 1)
-            msg.append(0x02); msg.append(contentsOf: adts)
+            self.audioBatchLock.lock()
+            self.audioBatch.append(Array(adts))
+            let ready = self.audioBatch.count >= self.audioBatchSize
+            let batch = ready ? self.audioBatch : []
+            if ready { self.audioBatch = [] }
+            self.audioBatchLock.unlock()
+            guard !batch.isEmpty else { return }
+            let total = batch.reduce(0) { $0 + $1.count }
+            var msg = [UInt8](); msg.reserveCapacity(total + 1)
+            msg.append(0x02)
+            for f in batch { msg.append(contentsOf: f) }
             self.broadcastAV(msg)
         }
 
@@ -75,8 +88,11 @@ class AppServer: ObservableObject {
     // MARK: - A/V WebSocket hub
 
     private func broadcastAV(_ bytes: [UInt8]) {
-        avLock.lock(); let clients = avClients; avLock.unlock()
-        for c in clients { c.writeBinary(bytes) }
+        avWriteQueue.async { [weak self] in
+            guard let self else { return }
+            self.avLock.lock(); let clients = self.avClients; self.avLock.unlock()
+            for c in clients { c.writeBinary(bytes) }
+        }
     }
 
     // MARK: - Timer WebSocket hub

@@ -78,8 +78,6 @@
     let avWs     = null;
     let audioCtx = null;
     let nextTime = 0;
-    let aacQueue = [];
-    const BATCH  = 4;     // accumulate ~92 ms of audio before decoding
 
     function avConnect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -113,27 +111,19 @@
       cameraBg.style.display = '';
     }
 
-    function scheduleAudio(adtsFrame) {
+    function scheduleAudio(chunk) {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        nextTime = audioCtx.currentTime + 0.1;
+        nextTime = audioCtx.currentTime + 0.15;
       }
-      aacQueue.push(adtsFrame);
-      if (aacQueue.length < BATCH) return;
-
-      const size   = aacQueue.reduce((s, f) => s + f.length, 0);
-      const merged = new Uint8Array(size);
-      let off = 0;
-      for (const f of aacQueue) { merged.set(f, off); off += f.length; }
-      aacQueue = [];
-
-      audioCtx.decodeAudioData(merged.buffer.slice(0))
+      // chunk is Uint8Array.slice() → owns its buffer; safe to transfer
+      audioCtx.decodeAudioData(chunk.buffer)
         .then(decoded => {
           const src = audioCtx.createBufferSource();
           src.buffer = decoded;
           src.connect(audioCtx.destination);
           const now = audioCtx.currentTime;
-          if (nextTime < now) nextTime = now + 0.05;
+          if (nextTime < now + 0.05) nextTime = now + 0.05;
           src.start(nextTime);
           nextTime += decoded.duration;
         })
@@ -147,7 +137,6 @@
       if (wsActive) {
         avMuted = !avMuted;
         if (avMuted) {
-          aacQueue = [];
           if (audioCtx) { audioCtx.close(); audioCtx = null; }
         }
         audioBtn.textContent = avMuted ? '🔇' : '🔊';
