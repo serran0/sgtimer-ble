@@ -1,0 +1,42 @@
+name: SGTimerBLE
+
+options:
+  bundleIdPrefix: com.sgtimer
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.4"
+  createIntermediateGroups: true
+
+packages:
+  Swifter:
+    url: https://github.com/httpswift/swifter
+    from: "1.5.0"
+
+targets:
+  SGTimerBLE:
+    type: application
+    platform: iOS
+
+    sources:
+      - path: SGTimerBLE
+
+    # static/ folder bundled as a folder reference so directory structure is preserved.
+    # buildPhase: resources ensures Xcode includes it in Copy Bundle Resources.
+    resources:
+      - path: static
+        type: folder
+        buildPhase: resources
+
+    dependencies:
+      - package: Swifter
+        product: Swifter
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sgtimer.SGTimerBLE
+        INFOPLIST_FILE: SGTimerBLE/Resources/Info.plist
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TARGETED_DEVICE_FAMILY: "1,2"      # 1 = iPhone, 2 = iPad
+        SWIFT_VERSION: "5.9"
+        DEVELOPMENT_TEAM: ""               # Fill in your Apple Team ID
+        CODE_SIGN_STYLE: Automatic
