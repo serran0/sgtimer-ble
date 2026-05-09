@@ -11,6 +11,8 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private var _currentFrame: Data?
     private let frameLock = NSLock()
 
+    var onFrame: ((Data) -> Void)?
+
     var captureSession_: AVCaptureSession { captureSession }
 
     func start() throws {
@@ -28,6 +30,13 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         if captureSession.canAddInput(input) {
             captureSession.addInput(input)
         }
+
+        // Lock to 30 fps — prevents auto-slowdown in low light
+        try? device.lockForConfiguration()
+        let t30 = CMTime(value: 1, timescale: 30)
+        device.activeVideoMinFrameDuration = t30
+        device.activeVideoMaxFrameDuration = t30
+        device.unlockForConfiguration()
 
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
@@ -56,8 +65,6 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         return _currentFrame
     }
 
-    // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-
     func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,
@@ -73,5 +80,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         frameLock.lock()
         _currentFrame = jpegData
         frameLock.unlock()
+
+        onFrame?(jpegData)
     }
 }

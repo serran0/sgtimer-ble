@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>SG Timer Display</title>
 <link rel="stylesheet" href="css/style-display.css" />
 <style>
-  /* Camera stream fills the entire viewport as background */
   #cameraBg {
     position: fixed;
     top: 0; left: 0;
@@ -14,14 +13,12 @@
     object-fit: cover;
     z-index: -1;
   }
-  /* Solid dark fallback when stream is unavailable */
   body { background-color: #111; }
 
-  /* Audio mute/unmute button – bottom-right corner */
   #audioBtn {
     position: fixed;
-    bottom: 14px;
-    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    right: calc(14px + env(safe-area-inset-right, 0px));
     z-index: 10;
     background: rgba(0,0,0,0.45);
     border: 1px solid rgba(255,255,255,0.25);
@@ -40,21 +37,12 @@
 </head>
 <body class="display-page">
 
-  <!--
-    The iOS app serves a live MJPEG camera stream at /camera.
-    It is used as a full-screen background behind the timer overlay.
-    If the server is the Python version (no camera), the broken image
-    is hidden via the onerror handler below.
-  -->
-  <img id="cameraBg" src="/camera" alt=""
-       onerror="this.style.display='none'" />
+  <!-- Camera background: src set by JS (WS blob or /camera fallback) -->
+  <img id="cameraBg" alt="" onerror="this.style.display='none'" />
 
-  <!--
-    Audio stream from the iOS device's microphone.
-    Starts muted to satisfy browser autoplay policy; user unmutes via button.
-  -->
-  <audio id="audioEl" src="/audio" autoplay muted playsinline></audio>
-  <button id="audioBtn" title="Unmute audio" onclick="toggleAudio()">🔇</button>
+  <!-- HTTP audio fallback (no src; started by JS only when WS unavailable) -->
+  <audio id="audioEl" playsinline></audio>
+  <button id="audioBtn" title="Unmute audio" onclick="toggleAudio()">&#128263;</button>
 
   <div id="display">
     <div id="competitionTitle">SG Timer</div>
@@ -77,22 +65,107 @@
 
   <script src="js/app.js"></script>
   <script>
-    // ── Audio stream controls ──────────────────────────────────────
+    // ── A/V WebSocket stream ──────────────────────────────────────────
+    // Connects to /avstream (iOS server only).
+    // Binary messages: byte 0 = type (0x01 JPEG video, 0x02 AAC audio), rest = payload.
+    // Falls back to /camera HTTP MJPEG if the endpoint is unavailable.
+
+    const cameraBg = document.getElementById('cameraBg');
     const audioEl  = document.getElementById('audioEl');
     const audioBtn = document.getElementById('audioBtn');
 
-    function toggleAudio() {
-      if (audioEl.muted) {
-        audioEl.muted = false;
-        audioEl.play().catch(() => { audioEl.muted = true; });
-      } else {
-        audioEl.muted = true;
-      }
-      audioBtn.textContent = audioEl.muted ? '🔇' : '🔊';
+    let avMuted  = true;  // start muted for autoplay policy
+    let avWs     = null;
+    let audioCtx = null;
+    let nextTime = 0;
+    let aacQueue = [];
+    const BATCH  = 4;     // accumulate ~92 ms of audio before decoding
+
+    function avConnect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      avWs = new WebSocket(proto + '//' + location.host + '/avstream');
+      avWs.binaryType = 'arraybuffer';
+
+      avWs.onopen = () => {
+        cameraBg.removeAttribute('src'); // cancel any HTTP camera fallback
+      };
+
+      avWs.onmessage = ({ data }) => {
+        const buf     = new Uint8Array(data);
+        const type    = buf[0];
+        const payload = buf.slice(1); // copy, not a view
+        if      (type === 0x01) showVideoFrame(payload);
+        else if (type === 0x02 && !avMuted) scheduleAudio(payload);
+      };
+
+      avWs.onclose = avWs.onerror = () => {
+        cameraBg.src = '/camera'; // fall back to HTTP MJPEG
+        setTimeout(avConnect, 3000);
+      };
     }
 
-    // Reconnect audio stream if it stalls or errors
+    function showVideoFrame(jpegBytes) {
+      const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
+      const url  = URL.createObjectURL(blob);
+      const prev = cameraBg.src;
+      cameraBg.onload = () => { if (prev.startsWith('blob:')) URL.revokeObjectURL(prev); };
+      cameraBg.src = url;
+      cameraBg.style.display = '';
+    }
+
+    function scheduleAudio(adtsFrame) {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        nextTime = audioCtx.currentTime + 0.1;
+      }
+      aacQueue.push(adtsFrame);
+      if (aacQueue.length < BATCH) return;
+
+      const size   = aacQueue.reduce((s, f) => s + f.length, 0);
+      const merged = new Uint8Array(size);
+      let off = 0;
+      for (const f of aacQueue) { merged.set(f, off); off += f.length; }
+      aacQueue = [];
+
+      audioCtx.decodeAudioData(merged.buffer.slice(0))
+        .then(decoded => {
+          const src = audioCtx.createBufferSource();
+          src.buffer = decoded;
+          src.connect(audioCtx.destination);
+          const now = audioCtx.currentTime;
+          if (nextTime < now) nextTime = now + 0.05;
+          src.start(nextTime);
+          nextTime += decoded.duration;
+        })
+        .catch(() => {});
+    }
+
+    // ── Audio toggle ──────────────────────────────────────────────────
+    function toggleAudio() {
+      const wsActive = avWs && avWs.readyState === WebSocket.OPEN;
+
+      if (wsActive) {
+        avMuted = !avMuted;
+        if (avMuted) {
+          aacQueue = [];
+          if (audioCtx) { audioCtx.close(); audioCtx = null; }
+        }
+        audioBtn.textContent = avMuted ? '🔇' : '🔊';
+      } else {
+        if (audioEl.muted || !audioEl.src) {
+          if (!audioEl.src) audioEl.src = '/audio';
+          audioEl.muted = false;
+          audioEl.play().catch(() => { audioEl.muted = true; });
+        } else {
+          audioEl.muted = true;
+        }
+        audioBtn.textContent = audioEl.muted ? '🔇' : '🔊';
+      }
+    }
+
+    // ── HTTP audio reconnect (fallback mode only) ─────────────────────
     function reconnectAudio() {
+      if (avWs && avWs.readyState === WebSocket.OPEN) return;
       const wasMuted = audioEl.muted;
       audioEl.src = '';
       setTimeout(() => {
@@ -102,19 +175,11 @@
       }, 2000);
     }
 
-    audioEl.addEventListener('error',  reconnectAudio);
-    audioEl.addEventListener('ended',  reconnectAudio);
-    audioEl.addEventListener('stalled', () => {
-      // Only reconnect if we actually wanted audio
-      if (!audioEl.muted) reconnectAudio();
-    });
+    audioEl.addEventListener('error',   reconnectAudio);
+    audioEl.addEventListener('ended',   reconnectAudio);
+    audioEl.addEventListener('stalled', () => { if (!audioEl.muted) reconnectAudio(); });
 
-    // If the audio endpoint is absent (Python server), hide the button
-    audioEl.addEventListener('error', () => {
-      if (audioEl.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
-        audioBtn.style.display = 'none';
-      }
-    }, { once: true });
+    avConnect();
   </script>
 </body>
 </html>

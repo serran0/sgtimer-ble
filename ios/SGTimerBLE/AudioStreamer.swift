@@ -29,6 +29,8 @@ class AudioStreamer {
         }
     }
 
+    var onFrame: ((Data) -> Void)?
+
     private var subscribers = [UUID: Subscriber]()
     private let subLock = NSLock()
 
@@ -46,6 +48,7 @@ class AudioStreamer {
     private func broadcast(_ frame: Data) {
         subLock.lock(); let subs = Array(subscribers.values); subLock.unlock()
         for s in subs { s.push(frame) }
+        onFrame?(frame)
     }
 
     // MARK: - Engine

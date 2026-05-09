@@ -17,6 +17,8 @@ class AppServer: ObservableObject {
     private let http = HttpServer()
     private var wsClients = [WebSocketSession]()
     private let wsLock = NSLock()
+    private var avClients = [WebSocketSession]()
+    private let avLock = NSLock()
     private let stateLock = NSLock()
 
     private var timerState = TimerState()
@@ -35,6 +37,21 @@ class AppServer: ObservableObject {
     func startServer(port: UInt16 = 8080) {
         try? camera.start()
         try? audio.start()
+
+        // Wire A/V callbacks for the /avstream WebSocket mux
+        camera.onFrame = { [weak self] jpeg in
+            guard let self else { return }
+            var msg = [UInt8](); msg.reserveCapacity(jpeg.count + 1)
+            msg.append(0x01); msg.append(contentsOf: jpeg)
+            self.broadcastAV(msg)
+        }
+        audio.onFrame = { [weak self] adts in
+            guard let self else { return }
+            var msg = [UInt8](); msg.reserveCapacity(adts.count + 1)
+            msg.append(0x02); msg.append(contentsOf: adts)
+            self.broadcastAV(msg)
+        }
+
         do {
             try http.start(port, forceIPv4: true)
             DispatchQueue.main.async {
@@ -47,13 +64,22 @@ class AppServer: ObservableObject {
     }
 
     func stopServer() {
+        camera.onFrame = nil
+        audio.onFrame  = nil
         http.stop()
         camera.stop()
         audio.stop()
         DispatchQueue.main.async { self.isRunning = false }
     }
 
-    // MARK: - WebSocket hub
+    // MARK: - A/V WebSocket hub
+
+    private func broadcastAV(_ bytes: [UInt8]) {
+        avLock.lock(); let clients = avClients; avLock.unlock()
+        for c in clients { c.writeBinary(bytes) }
+    }
+
+    // MARK: - Timer WebSocket hub
 
     private func addClient(_ s: WebSocketSession) {
         wsLock.lock(); wsClients.append(s); wsLock.unlock()
@@ -144,7 +170,18 @@ class AppServer: ObservableObject {
 
     private func setupRoutes() {
 
-        // ── WebSocket ──────────────────────────────────────────
+        // ── A/V mux WebSocket (binary: 0x01=JPEG video, 0x02=AAC audio) ──
+        http["/avstream"] = websocket(
+            text:         { _, _ in },
+            connected:    { [weak self] s in
+                self?.avLock.lock(); self?.avClients.append(s); self?.avLock.unlock()
+            },
+            disconnected: { [weak self] s in
+                self?.avLock.lock(); self?.avClients.removeAll { $0 === s }; self?.avLock.unlock()
+            }
+        )
+
+        // ── Timer event WebSocket ───────────────────────────────
         http["/ws"] = websocket(
             text:         { _, _ in },
             connected:    { [weak self] s in self?.onConnect(s) },
