@@ -16,7 +16,7 @@ class AudioStreamer {
         fileprivate func push(_ frame: Data) {
             lock.lock()
             queue.append(frame)
-            if queue.count > 60 { queue.removeFirst() } // ~1.4 s max back-log
+            if queue.count > 8 { queue.removeFirst() } // ~185 ms max back-log
             lock.unlock()
             sem.signal()
         }

@@ -11,6 +11,7 @@ class AppServer: ObservableObject {
     // MARK: - Published state
     @Published var isRunning = false
     @Published var localIP: String = "–"
+    @Published var cameraFPS: Double = 30
 
     // MARK: - Internal
     private let http = HttpServer()
@@ -170,7 +171,7 @@ class AppServer: ObservableObject {
                             break
                         }
                     }
-                    Thread.sleep(forTimeInterval: 1.0 / 25.0)
+                    Thread.sleep(forTimeInterval: 1.0 / self.cameraFPS)
                 }
             }
         }

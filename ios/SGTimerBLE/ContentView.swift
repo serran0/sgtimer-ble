@@ -27,6 +27,7 @@ struct ContentView: View {
     @EnvironmentObject var server: AppServer
     @State private var adminURL: URL? = nil
     @State private var showPreview = false
+    @State private var fps: Int = 30
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -113,8 +114,19 @@ struct ContentView: View {
 
             Spacer()
 
-            // Preview button — only visible when server is up
             if server.isRunning {
+                // FPS picker
+                Picker("FPS", selection: $fps) {
+                    Text("15 fps").tag(15)
+                    Text("30 fps").tag(30)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 110)
+                .onChange(of: fps) { newFPS in
+                    server.cameraFPS = Double(newFPS)
+                }
+
+                // Preview button
                 Button {
                     withAnimation { showPreview = true }
                 } label: {
