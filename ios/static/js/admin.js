@@ -444,16 +444,26 @@ function updateLensButtons(activeLensId) {
   });
 }
 
-// ───────────── Clear All Sessions Button ─────────────
-document.getElementById("clearSessionsBtn")?.addEventListener("click", async () => {
-  if (!confirm("Delete ALL sessions permanently? This cannot be undone.")) return;
-
+// ───────────── Clear All Sessions Modal ─────────────
+document.getElementById("clearSessionsBtn")?.addEventListener("click", () => {
   const hasSessions = sessionsList && sessionsList.children.length > 0;
   if (!hasSessions) {
     log("🗑️ No sessions to clear.");
     return;
   }
+  document.getElementById("clearModal").style.display = "flex";
+});
 
+document.getElementById("clearModal")?.addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.style.display = "none";
+});
+
+document.getElementById("modalCancelBtn")?.addEventListener("click", () => {
+  document.getElementById("clearModal").style.display = "none";
+});
+
+document.getElementById("modalConfirmBtn")?.addEventListener("click", async () => {
+  document.getElementById("clearModal").style.display = "none";
   try {
     const res = await fetch("/clear_sessions", { method: "POST" });
     if (res.ok) {

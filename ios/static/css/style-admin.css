@@ -352,6 +352,58 @@ h2 {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ───────────── Confirmation Modal ───────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-card {
+  background: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 28px 32px;
+  max-width: 340px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+}
+.modal-msg {
+  color: #f0f0f0;
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0 0 22px 0;
+  text-align: center;
+}
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.modal-cancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+}
+.modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+.modal-confirm {
+  background: linear-gradient(135deg, #7a2020, #5a1010);
+  color: #ff9090;
+  border: 1px solid rgba(255, 80, 80, 0.4);
+  box-shadow: none;
+}
+.modal-confirm:hover {
+  background: linear-gradient(135deg, #9a2828, #721414);
+  box-shadow: 0 0 8px rgba(255, 60, 60, 0.4);
+}
+
 /* ───────────── Scrollbar Styling ───────────── */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb {

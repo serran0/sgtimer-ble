@@ -139,7 +139,19 @@
     function scheduleAudio(chunk) {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        audioCtx.resume().catch(() => {});
+        audioCtx.resume().then(() => {
+          // Browser autoplay policy may block the context — revert to muted so
+          // the icon accurately reflects state and a tap will enable audio.
+          if (audioCtx && audioCtx.state !== 'running') {
+            avMuted = true;
+            audioCtx.close(); audioCtx = null;
+            audioBtn.textContent = '🔇';
+          }
+        }).catch(() => {
+          avMuted = true;
+          if (audioCtx) { audioCtx.close(); audioCtx = null; }
+          audioBtn.textContent = '🔇';
+        });
         nextTime = audioCtx.currentTime + 0.15;
       }
       // Drop if decode pipeline is backed up or scheduled too far ahead
