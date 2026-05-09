@@ -297,29 +297,25 @@ class AppServer: ObservableObject {
 
     // MARK: - Static files
 
-    private lazy var staticBase: URL = {
-        let bundleURL = Bundle.main.bundleURL
-        // Log bundle contents once to diagnose copy issues
-        let bundleContents = (try? FileManager.default.contentsOfDirectory(atPath: bundleURL.path))?.sorted() ?? []
-        print("📦 Bundle contents: \(bundleContents)")
-
-        let direct = bundleURL.appendingPathComponent("static")
-        if FileManager.default.fileExists(atPath: direct.path) { return direct }
-
-        if let res = Bundle.main.resourceURL?.appendingPathComponent("static"),
-           FileManager.default.fileExists(atPath: res.path) { return res }
-
-        print("⚠️ SGTimer: static/ not found. Bundle: \(bundleURL.path)")
-        return direct
-    }()
-
     private func serveStatic(path: String) -> HttpResponse {
-        let rel = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        let rel    = path.hasPrefix("/") ? String(path.dropFirst()) : path
         let target = rel.isEmpty ? "index.html" : rel
+        let bundle = Bundle.main.bundleURL
 
-        let fileURL = staticBase.appendingPathComponent(target)
-        guard let data = try? Data(contentsOf: fileURL) else { return .notFound }
-        return .ok(.data(data, contentType: mimeType(target)))
+        // 1. Ideal: static/ folder reference preserved directory structure
+        let withDir = bundle.appendingPathComponent("static/\(target)")
+        if let data = try? Data(contentsOf: withDir) {
+            return .ok(.data(data, contentType: mimeType(target)))
+        }
+
+        // 2. Xcode copied files flat into bundle root — strip any subdirectory
+        let filename = (target as NSString).lastPathComponent
+        let flat = bundle.appendingPathComponent(filename)
+        if let data = try? Data(contentsOf: flat) {
+            return .ok(.data(data, contentType: mimeType(target)))
+        }
+
+        return .notFound
     }
 
     private func mimeType(_ path: String) -> String {
