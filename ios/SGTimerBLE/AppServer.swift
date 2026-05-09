@@ -145,9 +145,9 @@ class AppServer: ObservableObject {
 
         // ── WebSocket ──────────────────────────────────────────
         http["/ws"] = websocket(
+            text:         { _, _ in },
             connected:    { [weak self] s in self?.onConnect(s) },
-            disconnected: { [weak self] s in self?.removeClient(s) },
-            text:         { _, _ in }
+            disconnected: { [weak self] s in self?.removeClient(s) }
         )
 
         // ── MJPEG camera stream ────────────────────────────────
