@@ -63,6 +63,9 @@
     <div id="status" class="stopped">STOPPED</div>
   </div>
 
+  <!-- Shared A/V sync delay: how far video/overlay lags behind to match audio latency.
+       Increase if audio is still ahead; decrease if video is ahead of audio. -->
+  <script>const AV_SYNC_DELAY_MS = 500;</script>
   <script src="js/app.js"></script>
   <script>
     // ── A/V WebSocket stream ──────────────────────────────────────────
@@ -106,13 +109,32 @@
       };
     }
 
+    // ── Delayed video display (matches audio latency) ────────────────
+    const videoQueue = [];
+    let rafScheduled = false;
+
     function showVideoFrame(jpegBytes) {
-      const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
-      const url  = URL.createObjectURL(blob);
-      const prev = cameraBg.src;
-      cameraBg.onload = () => { if (prev.startsWith('blob:')) URL.revokeObjectURL(prev); };
-      cameraBg.src = url;
-      cameraBg.style.display = '';
+      videoQueue.push({ url: URL.createObjectURL(new Blob([jpegBytes], { type: 'image/jpeg' })),
+                        ts: performance.now() });
+      if (!rafScheduled) { rafScheduled = true; requestAnimationFrame(drainVideoQueue); }
+    }
+
+    function drainVideoQueue() {
+      const now = performance.now();
+      let showUrl = null;
+      // Consume all frames old enough; keep only the newest eligible one
+      while (videoQueue.length && now - videoQueue[0].ts >= AV_SYNC_DELAY_MS) {
+        if (showUrl) URL.revokeObjectURL(showUrl); // discard skipped frames immediately
+        showUrl = videoQueue.shift().url;
+      }
+      if (showUrl) {
+        const prev = cameraBg.src;
+        cameraBg.onload = () => { if (prev.startsWith('blob:')) URL.revokeObjectURL(prev); };
+        cameraBg.src = showUrl;
+        cameraBg.style.display = '';
+      }
+      if (videoQueue.length) requestAnimationFrame(drainVideoQueue);
+      else rafScheduled = false;
     }
 
     function scheduleAudio(chunk) {

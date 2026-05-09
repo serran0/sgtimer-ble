@@ -1,8 +1,8 @@
-// ───────────── WebSocket Setup ─────────────
+// ───────────────────── WebSocket Setup ─────────────────────
 const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws";
 const ws = new WebSocket(wsUrl);
 
-// ───────────── UI Elements ─────────────
+// ───────────────────── UI Elements ─────────────────────
 const indicator = document.getElementById("connectionIndicator");
 const firstShotDiv = document.getElementById("firstShot");
 const bestSplitDiv = document.getElementById("bestSplit");
@@ -12,7 +12,7 @@ const shotsDiv = document.getElementById("shots");
 const statusDiv = document.getElementById("status");
 const titleDiv = document.getElementById("competitionTitle");
 
-// ───────────── State Variables ─────────────
+// ───────────────────── State Variables ─────────────────────
 let sessId = localStorage.getItem("sessId") || null;
 let shots = JSON.parse(localStorage.getItem("shots_" + sessId) || "[]");
 let bestSplit = parseFloat(localStorage.getItem("bestSplit_" + sessId)) || 0;
@@ -21,7 +21,7 @@ let totalShots = parseInt(localStorage.getItem("totalShots_" + sessId)) || 0;
 let firstShotTime = parseFloat(localStorage.getItem("firstShotTime_" + sessId)) || 0;
 let currentSessionState = localStorage.getItem("session_state") || "STOPPED";
 
-// ───────────── UI Helpers ─────────────
+// ───────────────────── UI Helpers ─────────────────────
 function updateStatus(state) {
   currentSessionState = state;
   localStorage.setItem("session_state", state);
@@ -44,7 +44,7 @@ function updateStatsDisplay() {
   totalShotsDiv.textContent = `Total Shots - ${totalShots}`;
 }
 
-// ───────────── Shared rendering helper ─────────────
+// ───────────────────── Shared rendering helper ─────────────────────
 function renderShot(shotNum, shotTime, prevTime) {
   // Container to hold shot and split (split below)
   const container = document.createElement("div");
@@ -64,14 +64,14 @@ function renderShot(shotNum, shotTime, prevTime) {
     container.appendChild(splitElement);
   }
 
-  shotsDiv.prepend(container); // 🟢 newest shots always appear on top
+  shotsDiv.prepend(container); // newest shots always appear on top
 
   while (shotsDiv.childElementCount > 30) {
     shotsDiv.removeChild(shotsDiv.lastChild);
   }
 }
 
-// ───────────── Restore full shot list ─────────────
+// ───────────────────── Restore full shot list ─────────────────────
 function restoreShotList() {
   shotsDiv.innerHTML = "";
   if (!shots || shots.length === 0) return;
@@ -84,7 +84,7 @@ function restoreShotList() {
   }
 }
 
-// ───────────── On Load ─────────────
+// ───────────────────── On Load ─────────────────────
 (async () => {
   updateStatus(currentSessionState);
   updateStatsDisplay();
@@ -108,14 +108,14 @@ function restoreShotList() {
   }
 })();
 
-// ───────────── Initial Title Load ─────────────
+// ───────────────────── Initial Title Load ─────────────────────
 fetch("/get_title")
   .then(r => r.json())
   .then(d => {
     if (d.title) titleDiv.textContent = d.title;
   });
 
-// ───────────── WebSocket Connection Events ─────────────
+// ───────────────────── WebSocket Connection Events ─────────────────────
 ws.onopen = async () => {
   console.log("WebSocket connected to server");
   indicator.classList.remove("connected", "standby");
@@ -151,10 +151,20 @@ ws.onclose = () => {
   updateStatus("STOPPED");
 };
 
-// ───────────── WebSocket Message Handling ─────────────
+// ───────────────────── WebSocket Message Handling ─────────────────────
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
 
+  // Connection/status events are always immediate — they reflect device state, not shot events.
+  const immediateTypes = ["DEVICE_CONNECTED", "DEVICE_DISCONNECTED", "WATCHDOG"];
+  if (immediateTypes.includes(msg.type)) { handleMessage(msg); return; }
+
+  // Timer events are delayed to stay in sync with the audio latency.
+  const delay = (typeof AV_SYNC_DELAY_MS !== 'undefined') ? AV_SYNC_DELAY_MS : 0;
+  setTimeout(() => handleMessage(msg), delay);
+};
+
+function handleMessage(msg) {
   if (msg.type === "DEVICE_CONNECTED") {
     indicator.classList.remove("disconnected", "standby");
     indicator.classList.add("connected");
@@ -254,4 +264,4 @@ ws.onmessage = (e) => {
       }
       break;
   }
-};
+}
