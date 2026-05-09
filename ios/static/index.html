@@ -74,10 +74,14 @@
     const audioEl  = document.getElementById('audioEl');
     const audioBtn = document.getElementById('audioBtn');
 
-    let avMuted  = true;  // start muted for autoplay policy
-    let avWs     = null;
-    let audioCtx = null;
-    let nextTime = 0;
+    let avMuted       = true;  // start muted for autoplay policy
+    let avWs          = null;
+    let audioCtx      = null;
+    let nextTime      = 0;
+    let decodeChain   = Promise.resolve();
+    let pendingDecodes = 0;
+    const MAX_PENDING  = 3;    // drop chunks if decode is falling behind
+    const MAX_AHEAD    = 1.0;  // drop chunks if scheduled >1 s in the future
 
     function avConnect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -116,9 +120,17 @@
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         nextTime = audioCtx.currentTime + 0.15;
       }
-      // chunk is Uint8Array.slice() → owns its buffer; safe to transfer
-      audioCtx.decodeAudioData(chunk.buffer)
+      // Drop if decode pipeline is backed up or scheduled too far ahead
+      if (pendingDecodes >= MAX_PENDING) return;
+      if (nextTime > audioCtx.currentTime + MAX_AHEAD) return;
+      pendingDecodes++;
+      const buf = chunk.buffer; // Uint8Array.slice() owns this buffer
+      // Serialize decodes so out-of-order promise resolution can't corrupt nextTime
+      decodeChain = decodeChain
+        .then(() => audioCtx ? audioCtx.decodeAudioData(buf) : Promise.reject())
         .then(decoded => {
+          pendingDecodes = Math.max(0, pendingDecodes - 1);
+          if (!audioCtx) return;
           const src = audioCtx.createBufferSource();
           src.buffer = decoded;
           src.connect(audioCtx.destination);
@@ -127,7 +139,7 @@
           src.start(nextTime);
           nextTime += decoded.duration;
         })
-        .catch(() => {});
+        .catch(() => { pendingDecodes = Math.max(0, pendingDecodes - 1); });
     }
 
     // ── Audio toggle ──────────────────────────────────────────────────
@@ -137,6 +149,8 @@
       if (wsActive) {
         avMuted = !avMuted;
         if (avMuted) {
+          decodeChain = Promise.resolve();
+          pendingDecodes = 0;
           if (audioCtx) { audioCtx.close(); audioCtx = null; }
         }
         audioBtn.textContent = avMuted ? '🔇' : '🔊';
