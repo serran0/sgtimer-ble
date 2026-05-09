@@ -20,10 +20,12 @@ targets:
     sources:
       - path: SGTimerBLE
 
-    # static/ folder bundled as a folder reference so directory structure is preserved
+    # static/ folder bundled as a folder reference so directory structure is preserved.
+    # buildPhase: resources ensures Xcode includes it in Copy Bundle Resources.
     resources:
       - path: static
         type: folder
+        buildPhase: resources
 
     dependencies:
       - package: Swifter
