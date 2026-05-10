@@ -43,8 +43,8 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     // MARK: - Lifecycle
 
-    func start() throws {
-        try switchLens(to: .builtInWideAngleCamera)
+    func start(initialLens: AVCaptureDevice.DeviceType = .builtInWideAngleCamera) throws {
+        try switchLens(to: initialLens)
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         // Remove before adding so a repeated start() call doesn't stack duplicate observers
         NotificationCenter.default.removeObserver(self,
@@ -126,6 +126,9 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
         if let conn = videoOutput.connection(with: .video) {
             applyVideoOrientation(to: conn)
+            if conn.isVideoStabilizationSupported {
+                conn.preferredVideoStabilizationMode = .cinematic
+            }
         }
 
         if !captureSession.isRunning {

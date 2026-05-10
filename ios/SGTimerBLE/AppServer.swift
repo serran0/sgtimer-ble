@@ -57,7 +57,9 @@ class AppServer: ObservableObject {
         guard !hasStarted else { return }
         hasStarted = true
 
-        try? camera.start()
+        let lenses = CameraStreamer.availableLenses()
+        let savedDeviceType = lenses.first(where: { $0.id == currentLensId })?.deviceType ?? .builtInWideAngleCamera
+        try? camera.start(initialLens: savedDeviceType)
         try? audio.start()
 
         // Wire A/V callbacks for the /avstream WebSocket mux
@@ -520,6 +522,9 @@ class AppServer: ObservableObject {
                 "currentLensId": self.currentLensId
             ]
             self.broadcast(updated)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.broadcast(["type": "RELOAD"])
+            }
             return self.json(["status": "ok"])
         }
 
