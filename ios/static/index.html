@@ -40,8 +40,9 @@
     <div id="status" class="stopped">STOPPED</div>
   </div>
 
-  <!-- Delay globals — updated from /get_settings on load -->
-  <script>let AUDIO_BUFFER_MS = 300; let AV_DELAY_MS = 0; const VIDEO_BUFFER_MS = 200;</script>
+  <!-- Delay globals — updated from /get_settings on load.
+       Must use var (not let) so window.X assignments in app.js update the same binding. -->
+  <script>var AUDIO_BUFFER_MS = 300; var AV_DELAY_MS = 0; var OVERLAY_DELAY_MS = 200; const VIDEO_BUFFER_MS = 200;</script>
   <script src="js/app.js"></script>
   <script>
     // ── A/V WebSocket stream ──────────────────────────────────────────

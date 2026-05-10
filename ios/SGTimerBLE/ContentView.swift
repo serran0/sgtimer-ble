@@ -193,6 +193,16 @@ struct ContentView: View {
                 in: 0...2000,
                 step: 10
             )
+
+            Stepper(
+                "Overlay Delay: \(server.overlayDelayMs) ms",
+                value: Binding(
+                    get: { server.overlayDelayMs },
+                    set: { server.updateOverlayDelay($0) }
+                ),
+                in: 0...2000,
+                step: 10
+            )
         }
     }
 
@@ -203,7 +213,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer v0.43")
+                Text("SG Timer v0.44")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

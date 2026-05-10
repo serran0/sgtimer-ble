@@ -14,6 +14,7 @@ class AppServer: ObservableObject {
     @Published var cameraFPS: Double = 30
     @Published var avSyncDelayMs: Int = 300
     @Published var avDelayMs: Int = 0
+    @Published var overlayDelayMs: Int = 200
     @Published var availableLenses: [LensOption] = []
     @Published var currentLensId: String = "wide"
     @Published var titleText: String = "SG Timer"
@@ -139,6 +140,9 @@ class AppServer: ObservableObject {
         if defaults.object(forKey: "avDelayMs") != nil {
             avDelayMs = defaults.integer(forKey: "avDelayMs")
         }
+        if defaults.object(forKey: "overlayDelayMs") != nil {
+            overlayDelayMs = defaults.integer(forKey: "overlayDelayMs")
+        }
     }
 
     func saveSettings() {
@@ -147,6 +151,7 @@ class AppServer: ObservableObject {
         defaults.set(avSyncDelayMs, forKey: "avSyncDelayMs")
         defaults.set(currentLensId, forKey: "currentLensId")
         defaults.set(avDelayMs, forKey: "avDelayMs")
+        defaults.set(overlayDelayMs, forKey: "overlayDelayMs")
     }
 
     // MARK: - Native UI actions (called from ContentView)
@@ -186,6 +191,11 @@ class AppServer: ObservableObject {
 
     func updateAvDelay(_ ms: Int) {
         avDelayMs = ms
+        broadcast(settingsDict())
+    }
+
+    func updateOverlayDelay(_ ms: Int) {
+        overlayDelayMs = ms
         broadcast(settingsDict())
     }
 
@@ -269,6 +279,7 @@ class AppServer: ObservableObject {
             "fps": Int(cameraFPS),
             "avSyncDelayMs": avSyncDelayMs,
             "avDelayMs": avDelayMs,
+            "overlayDelayMs": overlayDelayMs,
             "currentLensId": currentLensId
         ]
     }
@@ -511,6 +522,7 @@ class AppServer: ObservableObject {
                 "fps": Int(self.cameraFPS),
                 "avSyncDelayMs": self.avSyncDelayMs,
                 "avDelayMs": self.avDelayMs,
+                "overlayDelayMs": self.overlayDelayMs,
                 "currentLensId": self.currentLensId
             ])
         }
@@ -528,6 +540,9 @@ class AppServer: ObservableObject {
             }
             if let avDelay = body["avDelayMs"] as? Int, avDelay >= 0 {
                 DispatchQueue.main.async { self.avDelayMs = avDelay }
+            }
+            if let overlay = body["overlayDelayMs"] as? Int, overlay >= 0 {
+                DispatchQueue.main.async { self.overlayDelayMs = overlay }
             }
             self.saveSettings()
             self.broadcast(self.settingsDict())
