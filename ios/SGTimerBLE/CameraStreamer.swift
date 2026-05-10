@@ -57,11 +57,12 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     var streamMaxDimension: CGFloat = 1280
     var streamJpegQuality: CGFloat = 0.65
 
-    // Separate serial queue for JPEG encoding so the capture queue is never blocked.
-    // encodeInFlight drops frames that arrive while an encode is already running.
+    // Encode queue: ALL heavy work (CIImage → CGImage → JPEG) runs here, never on the capture queue.
+    // A fixed-interval rate limiter (not a binary in-flight flag) keeps delivery timing deterministic
+    // regardless of how long encoding actually takes under thermal load.
     private let encodeQueue = DispatchQueue(label: "camera.encode", qos: .userInitiated)
-    private var encodeInFlight = false
-    private let encodeInFlightLock = NSLock()
+    private var lastStreamTimestamp: CFAbsoluteTime = 0
+    var streamFrameInterval: CFTimeInterval = 1.0 / 20.0   // 20 fps max for web stream
 
     private var bitrateAccBytes: Int = 0
     private var bitrateWindowStart: Date = Date()
@@ -223,36 +224,41 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        // Recorder always gets every frame at full rate.
         onRawSampleBuffer?(sampleBuffer)
+
+        // Rate-limit stream encoding to a fixed interval on the capture queue
+        // (cheap: just a timestamp comparison). This makes delivery timing
+        // deterministic regardless of how long encoding takes under thermal load.
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastStreamTimestamp >= streamFrameInterval else { return }
+        lastStreamTimestamp = now
+
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // Build the scaled CGImage on the capture queue (GPU-backed CIContext, fast).
-        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        let extent = ciImage.extent
-        let maxDim = streamMaxDimension
-        let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
-        let scaled = streamScale < 1.0
-            ? ciImage.transformed(by: CGAffineTransform(scaleX: streamScale, y: streamScale))
-            : ciImage
-        guard let cgImage = ciContext.createCGImage(scaled, from: scaled.extent) else { return }
-
-        // JPEG encode runs on a dedicated serial queue so the capture queue is
-        // never stalled. Drop the frame if the previous encode is still running.
-        encodeInFlightLock.lock()
-        guard !encodeInFlight else { encodeInFlightLock.unlock(); return }
-        encodeInFlight = true
-        encodeInFlightLock.unlock()
-
+        // Retain the pixel buffer so it's valid on the encode queue after this
+        // callback returns. Always matched by a release in the async block.
+        CVPixelBufferRetain(imageBuffer)
         let quality = streamJpegQuality
-        encodeQueue.async { [weak self] in
-            guard let self else { return }
-            defer {
-                self.encodeInFlightLock.lock()
-                self.encodeInFlight = false
-                self.encodeInFlightLock.unlock()
-            }
+        let maxDim = streamMaxDimension
 
-            guard let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: quality) else { return }
+        encodeQueue.async { [weak self] in
+            defer { CVPixelBufferRelease(imageBuffer) }
+            guard let self else { return }
+
+            // ALL heavy work (CIImage → CGImage → JPEG) runs here, never on
+            // the capture queue. The capture queue stays instant so AVFoundation
+            // delivers frames on time and alwaysDiscardsLateVideoFrames never
+            // has to intervene with irregular drop patterns.
+            let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+            let extent = ciImage.extent
+            let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
+            let scaled = streamScale < 1.0
+                ? ciImage.transformed(by: CGAffineTransform(scaleX: streamScale, y: streamScale))
+                : ciImage
+            guard let cgImage = self.ciContext.createCGImage(scaled, from: scaled.extent),
+                  let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: quality)
+            else { return }
 
             self.frameLock.lock()
             self._currentFrame = jpegData
