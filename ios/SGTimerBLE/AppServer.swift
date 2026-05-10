@@ -180,7 +180,7 @@ class AppServer: ObservableObject {
         let lenses = CameraStreamer.availableLenses()
         guard let lens = lenses.first(where: { $0.id == id }) else { return }
         try? camera.switchLens(to: lens.deviceType)
-        currentLensId = id
+        DispatchQueue.main.async { self.currentLensId = id }
         saveSettings()
         broadcast(["type": "LENS_CHANGED", "lensId": id])
     }
