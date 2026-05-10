@@ -175,10 +175,20 @@ struct ContentView: View {
             }
 
             Stepper(
-                "A/V Sync: \(server.avSyncDelayMs) ms",
+                "Audio Buffer: \(server.avSyncDelayMs) ms",
                 value: Binding(
                     get: { server.avSyncDelayMs },
                     set: { server.updateSyncDelay($0) }
+                ),
+                in: 0...2000,
+                step: 10
+            )
+
+            Stepper(
+                "Overlay Delay: \(server.overlayDelayMs) ms",
+                value: Binding(
+                    get: { server.overlayDelayMs },
+                    set: { server.updateOverlayDelay($0) }
                 ),
                 in: 0...2000,
                 step: 10
@@ -188,9 +198,14 @@ struct ContentView: View {
 
     private var saveSettingsSection: some View {
         Section(footer: Group {
-            if server.isRunning {
-                Text("Admin panel: http://\(server.localIP):8080/admin.html")
+            VStack(alignment: .leading, spacing: 4) {
+                if server.isRunning {
+                    Text("Admin: http://\(server.localIP):8080/admin.html")
+                        .font(.caption)
+                }
+                Text("SG Timer v0.41")
                     .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }) {
             Button {

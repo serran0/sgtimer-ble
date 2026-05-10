@@ -12,10 +12,11 @@ class AppServer: ObservableObject {
     @Published var isRunning = false
     @Published var localIP: String = "–"
     @Published var cameraFPS: Double = 30
-    @Published var avSyncDelayMs: Int = 300
+    @Published var avSyncDelayMs: Int = 700
     @Published var availableLenses: [LensOption] = []
     @Published var currentLensId: String = "wide"
     @Published var titleText: String = "SG Timer"
+    @Published var overlayDelayMs: Int = 700
     @Published var connectedDeviceName: String? = nil
     @Published var connectedDeviceAddress: String? = nil
     @Published var isScanning: Bool = false
@@ -135,6 +136,9 @@ class AppServer: ObservableObject {
         if let lens = defaults.string(forKey: "currentLensId") {
             currentLensId = lens
         }
+        if defaults.object(forKey: "overlayDelayMs") != nil {
+            overlayDelayMs = defaults.integer(forKey: "overlayDelayMs")
+        }
     }
 
     func saveSettings() {
@@ -142,6 +146,7 @@ class AppServer: ObservableObject {
         defaults.set(cameraFPS, forKey: "cameraFPS")
         defaults.set(avSyncDelayMs, forKey: "avSyncDelayMs")
         defaults.set(currentLensId, forKey: "currentLensId")
+        defaults.set(overlayDelayMs, forKey: "overlayDelayMs")
     }
 
     // MARK: - Native UI actions (called from ContentView)
@@ -176,6 +181,11 @@ class AppServer: ObservableObject {
 
     func updateSyncDelay(_ ms: Int) {
         avSyncDelayMs = ms
+        broadcast(settingsDict())
+    }
+
+    func updateOverlayDelay(_ ms: Int) {
+        overlayDelayMs = ms
         broadcast(settingsDict())
     }
 
@@ -258,6 +268,7 @@ class AppServer: ObservableObject {
             "type": "SETTINGS_UPDATE",
             "fps": Int(cameraFPS),
             "avSyncDelayMs": avSyncDelayMs,
+            "overlayDelayMs": overlayDelayMs,
             "currentLensId": currentLensId
         ]
     }
@@ -499,6 +510,7 @@ class AppServer: ObservableObject {
             return self.json([
                 "fps": Int(self.cameraFPS),
                 "avSyncDelayMs": self.avSyncDelayMs,
+                "overlayDelayMs": self.overlayDelayMs,
                 "currentLensId": self.currentLensId
             ])
         }
@@ -513,6 +525,9 @@ class AppServer: ObservableObject {
             }
             if let delay = body["avSyncDelayMs"] as? Int, delay >= 0 {
                 DispatchQueue.main.async { self.avSyncDelayMs = delay }
+            }
+            if let overlay = body["overlayDelayMs"] as? Int, overlay >= 0 {
+                DispatchQueue.main.async { self.overlayDelayMs = overlay }
             }
             self.saveSettings()
             let updated: [String: Any] = [

@@ -12,7 +12,7 @@
 </head>
 <body>
   <h1>SG Timer Admin Panel</h1>
-  <p style="color:#888;font-size:12px;margin:-6px 0 18px 0;letter-spacing:0.4px;">v0.40 &nbsp;·&nbsp; iOS mode</p>
+  <p style="color:#888;font-size:12px;margin:-6px 0 18px 0;letter-spacing:0.4px;">v0.41 &nbsp;·&nbsp; iOS mode</p>
   <div id="controls">
     <button id="scanBtn" class="btn">🔍 Scan</button>
     <select id="deviceSelect"></select>
@@ -40,8 +40,12 @@
       </div>
     </div>
     <div class="settings-row">
-      <label for="syncDelayInput">A/V Sync Delay (ms)</label>
-      <input id="syncDelayInput" type="number" min="0" max="2000" step="10" value="300">
+      <label for="syncDelayInput">Audio Buffer (ms)</label>
+      <input id="syncDelayInput" type="number" min="0" max="2000" step="10" value="700">
+    </div>
+    <div class="settings-row">
+      <label for="overlayDelayInput">Overlay Delay (ms)</label>
+      <input id="overlayDelayInput" type="number" min="0" max="2000" step="10" value="700">
     </div>
     <div class="settings-row">
       <button id="saveSettingsBtn" class="btn">💾 Save Settings</button>

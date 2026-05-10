@@ -101,7 +101,8 @@ function resetInactivityTimer() {
   try {
     const res = await fetch("/get_settings");
     const d = await res.json();
-    if (typeof d.avSyncDelayMs === "number") window.AV_SYNC_DELAY_MS = d.avSyncDelayMs;
+    if (typeof d.avSyncDelayMs === "number") window.AUDIO_BUFFER_MS = d.avSyncDelayMs;
+    if (typeof d.overlayDelayMs === "number") window.OVERLAY_DELAY_MS = d.overlayDelayMs;
   } catch (e) { /* non-iOS server, ignore */ }
 
   try {
@@ -176,8 +177,8 @@ ws.onmessage = (e) => {
   ];
   if (immediateTypes.includes(msg.type)) { handleMessage(msg); return; }
 
-  // Timer events are delayed to stay in sync with the audio latency.
-  const delay = (typeof AV_SYNC_DELAY_MS !== 'undefined') ? AV_SYNC_DELAY_MS : 0;
+  // Timer events are delayed to stay in sync with the video latency.
+  const delay = (typeof OVERLAY_DELAY_MS !== 'undefined') ? OVERLAY_DELAY_MS : 0;
   setTimeout(() => handleMessage(msg), delay);
 };
 
@@ -222,7 +223,8 @@ function handleMessage(msg) {
   }
 
   if (msg.type === "SETTINGS_UPDATE") {
-    if (typeof msg.avSyncDelayMs === "number") window.AV_SYNC_DELAY_MS = msg.avSyncDelayMs;
+    if (typeof msg.avSyncDelayMs === "number") window.AUDIO_BUFFER_MS = msg.avSyncDelayMs;
+    if (typeof msg.overlayDelayMs === "number") window.OVERLAY_DELAY_MS = msg.overlayDelayMs;
     return;
   }
 

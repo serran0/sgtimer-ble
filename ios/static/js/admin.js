@@ -355,6 +355,8 @@ function applySettings(d) {
     });
     const input = document.getElementById("syncDelayInput");
     if (input && typeof d.avSyncDelayMs === "number") input.value = d.avSyncDelayMs;
+    const overlayInput = document.getElementById("overlayDelayInput");
+    if (overlayInput && typeof d.overlayDelayMs === "number") overlayInput.value = d.overlayDelayMs;
   }
   if (d.currentLensId) updateLensButtons(d.currentLensId);
 }
@@ -370,14 +372,15 @@ async function loadSettings() {
 
 document.getElementById("saveSettingsBtn")?.addEventListener("click", async () => {
   const fps = parseInt(document.querySelector(".fps-btn.active")?.dataset.fps || "30");
-  const delay = parseInt(document.getElementById("syncDelayInput")?.value || "300");
+  const delay = parseInt(document.getElementById("syncDelayInput")?.value || "700");
+  const overlayDelay = parseInt(document.getElementById("overlayDelayInput")?.value || "700");
   try {
     const res = await fetch("/save_settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fps, avSyncDelayMs: delay }),
+      body: JSON.stringify({ fps, avSyncDelayMs: delay, overlayDelayMs: overlayDelay }),
     });
-    if (res.ok) log(`✅ Settings saved (${fps} fps, ${delay}ms sync) — reloading clients in 1s…`);
+    if (res.ok) log(`✅ Settings saved (${fps} fps, ${delay}ms audio buffer, ${overlayDelay}ms overlay) — reloading clients in 1s…`);
     else log("⚠️ Failed to save settings");
   } catch (e) {
     log("Error saving settings: " + e.message);
