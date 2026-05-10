@@ -31,6 +31,7 @@ struct SGTimerBLEApp: App {
                 server.handleForeground(isColdStart: !hasEnteredBackground)
             case .background:
                 UIApplication.shared.isIdleTimerDisabled = false
+                server.handleBackground()
                 hasEnteredBackground = true
             default:
                 break

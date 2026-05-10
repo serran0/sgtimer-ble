@@ -45,6 +45,7 @@ class AppServer: ObservableObject {
     private var serverGeneration: Int = Int(Date().timeIntervalSince1970)
 
     private var timerState = TimerState()
+    private var reconnectOnWarm = false
     private var lastTimerState: [String: Any]? = nil
 
     // MARK: - Init
@@ -130,21 +131,24 @@ class AppServer: ObservableObject {
             startServer()
             return
         }
-        // New generation so browsers detect the restart and reload
         serverGeneration = Int(Date().timeIntervalSince1970)
         if isColdStart {
-            // Hard restart: wipe timer state so clients show a clean slate
             timerState = TimerState()
+            stateLock.lock(); lastTimerState = nil; stateLock.unlock()
+            refreshOverlay()
             broadcast(["type": "SESSION_SYNC", "state": timerState.toDictionary()])
         }
         broadcast(["type": "RELOAD"])
-        // Only auto-reconnect on warm returns from background, not cold starts.
-        if !isColdStart,
-           connectedDeviceName == nil,
+        if !isColdStart, reconnectOnWarm,
            let addr = UserDefaults.standard.string(forKey: "lastDeviceAddr"),
            let name = UserDefaults.standard.string(forKey: "lastDeviceName") {
             ble.connect(address: addr, name: name)
         }
+        reconnectOnWarm = false
+    }
+
+    func handleBackground() {
+        reconnectOnWarm = connectedDeviceAddress != nil
     }
 
     // MARK: - Settings persistence
