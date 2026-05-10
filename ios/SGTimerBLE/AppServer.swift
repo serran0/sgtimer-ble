@@ -447,14 +447,16 @@ class AppServer: ObservableObject {
             session.writeText(t)
         }
 
-        // Send session sync
+        // Always send SESSION_SYNC so the client never keeps stale state from a
+        // previous connection. Falls back to lastTimerState (last completed session)
+        // or a zeroed timerState if nothing has run yet.
         stateLock.lock()
-        let state: [String: Any]? = timerState.sessId != nil
+        let state = timerState.sessId != nil
             ? timerState.toDictionary()
-            : lastTimerState
+            : (lastTimerState ?? timerState.toDictionary())
         stateLock.unlock()
 
-        if let state, let t = jsonString(["type": "SESSION_SYNC", "state": state]) {
+        if let t = jsonString(["type": "SESSION_SYNC", "state": state]) {
             session.writeText(t)
         }
     }
@@ -617,10 +619,14 @@ class AppServer: ObservableObject {
                 while true {
                     guard let frame = sub.next(timeout: 0.5) else { continue }
                     let hdr = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(frame.count)\r\n\r\n"
+                    // Single write = one TCP segment, eliminates Nagle fragmentation jitter
+                    var packet = [UInt8]()
+                    packet.reserveCapacity(hdr.utf8.count + frame.count + 2)
+                    packet.append(contentsOf: hdr.utf8)
+                    packet.append(contentsOf: frame)
+                    packet.append(contentsOf: "\r\n".utf8)
                     do {
-                        try writer.write(Array(hdr.utf8))
-                        try writer.write(frame)
-                        try writer.write(Array("\r\n".utf8))
+                        try writer.write(packet)
                     } catch {
                         break
                     }

@@ -57,6 +57,12 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     var streamMaxDimension: CGFloat = 1280
     var streamJpegQuality: CGFloat = 0.65
 
+    // Separate serial queue for JPEG encoding so the capture queue is never blocked.
+    // encodeInFlight drops frames that arrive while an encode is already running.
+    private let encodeQueue = DispatchQueue(label: "camera.encode", qos: .userInitiated)
+    private var encodeInFlight = false
+    private let encodeInFlightLock = NSLock()
+
     private var bitrateAccBytes: Int = 0
     private var bitrateWindowStart: Date = Date()
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
@@ -220,36 +226,53 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         onRawSampleBuffer?(sampleBuffer)
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
+        // Build the scaled CGImage on the capture queue (GPU-backed CIContext, fast).
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        // Cap MJPEG stream at configured max dimension
         let extent = ciImage.extent
-        let maxDim: CGFloat = streamMaxDimension
+        let maxDim = streamMaxDimension
         let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
-        let streamImage = streamScale < 1.0
+        let scaled = streamScale < 1.0
             ? ciImage.transformed(by: CGAffineTransform(scaleX: streamScale, y: streamScale))
             : ciImage
-        guard let cgImage = ciContext.createCGImage(streamImage, from: streamImage.extent) else { return }
-        let uiImage = UIImage(cgImage: cgImage)
-        guard let jpegData = uiImage.jpegData(compressionQuality: streamJpegQuality) else { return }
+        guard let cgImage = ciContext.createCGImage(scaled, from: scaled.extent) else { return }
 
-        frameLock.lock()
-        _currentFrame = jpegData
-        frameLock.unlock()
+        // JPEG encode runs on a dedicated serial queue so the capture queue is
+        // never stalled. Drop the frame if the previous encode is still running.
+        encodeInFlightLock.lock()
+        guard !encodeInFlight else { encodeInFlightLock.unlock(); return }
+        encodeInFlight = true
+        encodeInFlightLock.unlock()
 
-        onFrame?(jpegData)
+        let quality = streamJpegQuality
+        encodeQueue.async { [weak self] in
+            guard let self else { return }
+            defer {
+                self.encodeInFlightLock.lock()
+                self.encodeInFlight = false
+                self.encodeInFlightLock.unlock()
+            }
 
-        mjpegSubLock.lock()
-        let subs = Array(mjpegSubs.values)
-        mjpegSubLock.unlock()
-        subs.forEach { $0.push(jpegData) }
+            guard let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: quality) else { return }
 
-        bitrateAccBytes += jpegData.count
-        let elapsed = Date().timeIntervalSince(bitrateWindowStart)
-        if elapsed >= 1.0 {
-            let kbps = Double(bitrateAccBytes * 8) / elapsed / 1000.0
-            bitrateAccBytes = 0
-            bitrateWindowStart = Date()
-            onBitrateUpdate?(kbps)
+            self.frameLock.lock()
+            self._currentFrame = jpegData
+            self.frameLock.unlock()
+
+            self.onFrame?(jpegData)
+
+            self.mjpegSubLock.lock()
+            let subs = Array(self.mjpegSubs.values)
+            self.mjpegSubLock.unlock()
+            subs.forEach { $0.push(jpegData) }
+
+            self.bitrateAccBytes += jpegData.count
+            let elapsed = Date().timeIntervalSince(self.bitrateWindowStart)
+            if elapsed >= 1.0 {
+                let kbps = Double(self.bitrateAccBytes * 8) / elapsed / 1000.0
+                self.bitrateAccBytes = 0
+                self.bitrateWindowStart = Date()
+                self.onBitrateUpdate?(kbps)
+            }
         }
     }
 }
