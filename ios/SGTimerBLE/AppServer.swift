@@ -315,15 +315,15 @@ class AppServer: ObservableObject {
             // Shot list — bottom right
             if !shots.isEmpty {
                 let shFont = UIFont.monospacedDigitSystemFont(ofSize: 20 * s, weight: .semibold)
+                let attr: [NSAttributedString.Key: Any] = [.font: shFont, .foregroundColor: UIColor.white]
+                let labels = shots.reversed().map { "#\($0.num) — \(String(format: "%.2f", $0.time)) s" }
                 let lh: CGFloat = 28 * s
-                let bw: CGFloat = 230 * s
+                let bw = (labels.map { ($0 as NSString).size(withAttributes: attr).width }.max() ?? 0)
                 let bh = CGFloat(shots.count) * lh + 8 * s
                 let bx = W - bw - pad
                 let by = H - bh - pad
                 bg(CGRect(x: bx - 8 * s, y: by - 8 * s, width: bw + 16 * s, height: bh))
-                for (i, shot) in shots.reversed().enumerated() {
-                    let label = "#\(shot.num) — \(String(format: "%.2f", shot.time)) s"
-                    let attr: [NSAttributedString.Key: Any] = [.font: shFont, .foregroundColor: UIColor.white]
+                for (i, label) in labels.enumerated() {
                     (label as NSString).draw(at: CGPoint(x: bx, y: by + CGFloat(i) * lh),
                                              withAttributes: attr)
                 }
