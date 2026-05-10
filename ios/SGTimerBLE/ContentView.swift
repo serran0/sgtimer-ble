@@ -203,7 +203,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer v0.42")
+                Text("SG Timer v0.43")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
