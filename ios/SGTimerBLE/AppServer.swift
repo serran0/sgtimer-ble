@@ -112,6 +112,12 @@ class AppServer: ObservableObject {
         // New generation so browsers detect the restart and reload
         serverGeneration = Int(Date().timeIntervalSince1970)
         broadcast(["type": "RELOAD"])
+        // Reconnect to last known device if not currently connected
+        if connectedDeviceName == nil,
+           let addr = UserDefaults.standard.string(forKey: "lastDeviceAddr"),
+           let name = UserDefaults.standard.string(forKey: "lastDeviceName") {
+            ble.connect(address: addr, name: name)
+        }
     }
 
     // MARK: - Settings persistence
@@ -171,14 +177,10 @@ class AppServer: ObservableObject {
         broadcast(settingsDict())
     }
 
-    func saveAndRestart() {
+    func saveSettingsAndReload() {
         saveSettings()
-        broadcast(["type": "RELOAD"])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.stopServer()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self?.startServer()
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.broadcast(["type": "RELOAD"])
         }
     }
 
@@ -277,6 +279,8 @@ class AppServer: ObservableObject {
         case "DEVICE_CONNECTED":
             let name = event["name"] as? String ?? "Unknown"
             let addr = event["addr"] as? String ?? ""
+            UserDefaults.standard.set(addr, forKey: "lastDeviceAddr")
+            UserDefaults.standard.set(name, forKey: "lastDeviceName")
             DispatchQueue.main.async {
                 self.connectedDeviceName = name
                 self.connectedDeviceAddress = addr

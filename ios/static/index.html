@@ -14,54 +14,12 @@
     z-index: -1;
   }
   body { background-color: #111; }
-
-  #audioBtn {
-    position: fixed;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    right: calc(14px + env(safe-area-inset-right, 0px));
-    z-index: 10;
-    background: rgba(0,0,0,0.45);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 50%;
-    width: 38px;
-    height: 38px;
-    font-size: 18px;
-    line-height: 38px;
-    text-align: center;
-    cursor: pointer;
-    user-select: none;
-    transition: background 0.2s;
-  }
-  #audioBtn:hover { background: rgba(255,255,255,0.15); }
-
-  #audioHint {
-    position: fixed;
-    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    right: calc(60px + env(safe-area-inset-right, 0px));
-    z-index: 10;
-    background: rgba(0,0,0,0.65);
-    color: rgba(255,255,255,0.9);
-    font-size: 11px;
-    font-family: sans-serif;
-    padding: 5px 9px;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.2);
-    pointer-events: none;
-    transition: opacity 0.4s;
-    white-space: nowrap;
-  }
 </style>
 </head>
 <body class="display-page">
 
   <!-- Camera background: src set by JS (WS blob or /camera fallback) -->
   <img id="cameraBg" alt="" onerror="this.style.display='none'" />
-
-  <!-- HTTP audio fallback (no src; started by JS only when WS unavailable) -->
-  <audio id="audioEl" playsinline></audio>
-  <button id="audioBtn" title="Mute audio" onclick="toggleAudio()">&#128266;</button>
-  <!-- Hint shown until first user interaction unlocks audio -->
-  <div id="audioHint">tap for audio</div>
 
   <div id="display">
     <div id="competitionTitle">SG Timer</div>
@@ -87,53 +45,46 @@
   <script src="js/app.js"></script>
   <script>
     // ── A/V WebSocket stream ──────────────────────────────────────────
-    // Connects to /avstream (iOS server only).
     // Binary messages: byte 0 = type (0x01 JPEG video, 0x02 AAC audio), rest = payload.
-    // Falls back to /camera HTTP MJPEG if the endpoint is unavailable.
+    // Falls back to /camera HTTP MJPEG for video if WS unavailable.
 
-    const cameraBg  = document.getElementById('cameraBg');
-    const audioEl   = document.getElementById('audioEl');
-    const audioBtn  = document.getElementById('audioBtn');
-    const audioHint = document.getElementById('audioHint');
+    const cameraBg = document.getElementById('cameraBg');
 
-    // In the native preview overlay (?preview=1) we skip all audio to avoid
-    // a feedback loop between the phone's speaker and microphone.
+    // Skip audio in the native preview overlay to avoid speaker→mic feedback loop
     const isPreview = new URLSearchParams(location.search).get('preview') === '1';
-    if (isPreview) { audioBtn.style.display = 'none'; audioHint.style.display = 'none'; }
 
-    let avMuted       = false; // start unmuted
-    let avWs          = null;
-    let audioCtx      = null;
-    let nextTime      = 0;
+    let avWs     = null;
+    let audioCtx = null;
+    let nextTime = 0;
     let decodeChain   = Promise.resolve();
     let pendingDecodes = 0;
-    const MAX_PENDING  = 3;    // drop chunks if decode is falling behind
-    const MAX_AHEAD    = 1.0;  // drop chunks if scheduled >1 s in the future
+    const MAX_PENDING  = 3;
+    const MAX_AHEAD    = 1.0;
 
-    // ── AudioContext unlock on first user gesture ─────────────────────
-    // AudioContext MUST be created inside a user-gesture handler on iOS Safari
-    // to start in 'running' state without needing resume(). Creating it eagerly
-    // on first audio chunk (outside a gesture) leaves it 'suspended' and
-    // resume() is unreliable on some iOS versions. So we never create it in
-    // scheduleAudio — only here, where we're guaranteed to be inside a gesture.
-    function tryResumeAudio() {
-      if (avMuted) return;
-      // Dismiss the "tap for audio" hint on first interaction
-      if (audioHint) { audioHint.style.opacity = '0'; setTimeout(() => audioHint.remove(), 400); }
+    // ── Audio autostart ───────────────────────────────────────────────
+    // Create AudioContext eagerly and retry resume() every 500 ms.
+    // OBS browser source (CEF) disables the autoplay restriction so the context
+    // starts 'running' on the very first attempt. Chrome/Edge desktop will start
+    // 'suspended' and require the user to grant audio permission for this origin
+    // in browser settings (chrome://settings/content/sound) — subsequent visits
+    // then autoplay without interaction.
+    function startAudio() {
       if (!audioCtx) {
-        // Created inside gesture → starts 'running' immediately on iOS Safari
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         nextTime = audioCtx.currentTime + 0.15;
-        return;
       }
       if (audioCtx.state !== 'running') {
-        audioCtx.resume().then(() => {
-          if (audioCtx) nextTime = audioCtx.currentTime + 0.15;
-        }).catch(() => {});
+        audioCtx.resume().catch(() => {});
       }
     }
-    document.addEventListener('click',      tryResumeAudio, { passive: true });
-    document.addEventListener('touchstart', tryResumeAudio, { passive: true });
+
+    if (!isPreview) {
+      startAudio();
+      const audioRetry = setInterval(() => {
+        if (audioCtx && audioCtx.state === 'running') { clearInterval(audioRetry); return; }
+        startAudio();
+      }, 500);
+    }
 
     function avConnect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -147,9 +98,9 @@
       avWs.onmessage = ({ data }) => {
         const buf     = new Uint8Array(data);
         const type    = buf[0];
-        const payload = buf.slice(1); // copy, not a view
+        const payload = buf.slice(1);
         if      (type === 0x01) showVideoFrame(payload);
-        else if (type === 0x02 && !avMuted && !isPreview) scheduleAudio(payload);
+        else if (type === 0x02 && !isPreview) scheduleAudio(payload);
       };
 
       avWs.onclose = avWs.onerror = () => {
@@ -171,9 +122,8 @@
     function drainVideoQueue() {
       const now = performance.now();
       let showUrl = null;
-      // Consume all frames old enough; keep only the newest eligible one
       while (videoQueue.length && now - videoQueue[0].ts >= AV_SYNC_DELAY_MS) {
-        if (showUrl) URL.revokeObjectURL(showUrl); // discard skipped frames immediately
+        if (showUrl) URL.revokeObjectURL(showUrl);
         showUrl = videoQueue.shift().url;
       }
       if (showUrl) {
@@ -187,14 +137,11 @@
     }
 
     function scheduleAudio(chunk) {
-      // Drop until user gesture creates and unlocks the AudioContext
       if (!audioCtx || audioCtx.state !== 'running') return;
-      // Drop if decode pipeline is backed up or scheduled too far ahead
       if (pendingDecodes >= MAX_PENDING) return;
       if (nextTime > audioCtx.currentTime + MAX_AHEAD) return;
       pendingDecodes++;
-      const buf = chunk.buffer; // Uint8Array.slice() owns this buffer
-      // Serialize decodes so out-of-order promise resolution can't corrupt nextTime
+      const buf = chunk.buffer;
       decodeChain = decodeChain
         .then(() => audioCtx ? audioCtx.decodeAudioData(buf) : Promise.reject())
         .then(decoded => {
@@ -210,46 +157,6 @@
         })
         .catch(() => { pendingDecodes = Math.max(0, pendingDecodes - 1); });
     }
-
-    // ── Audio toggle ──────────────────────────────────────────────────
-    function toggleAudio() {
-      const wsActive = avWs && avWs.readyState === WebSocket.OPEN;
-
-      if (wsActive) {
-        avMuted = !avMuted;
-        if (avMuted) {
-          decodeChain = Promise.resolve();
-          pendingDecodes = 0;
-          if (audioCtx) { audioCtx.close(); audioCtx = null; }
-        }
-        audioBtn.textContent = avMuted ? '🔇' : '🔊';
-      } else {
-        if (audioEl.muted || !audioEl.src) {
-          if (!audioEl.src) audioEl.src = '/audio';
-          audioEl.muted = false;
-          audioEl.play().catch(() => { audioEl.muted = true; });
-        } else {
-          audioEl.muted = true;
-        }
-        audioBtn.textContent = audioEl.muted ? '🔇' : '🔊';
-      }
-    }
-
-    // ── HTTP audio reconnect (fallback mode only) ─────────────────────
-    function reconnectAudio() {
-      if (avWs && avWs.readyState === WebSocket.OPEN) return;
-      const wasMuted = audioEl.muted;
-      audioEl.src = '';
-      setTimeout(() => {
-        audioEl.src = '/audio';
-        audioEl.muted = wasMuted;
-        audioEl.play().catch(() => {});
-      }, 2000);
-    }
-
-    audioEl.addEventListener('error',   reconnectAudio);
-    audioEl.addEventListener('ended',   reconnectAudio);
-    audioEl.addEventListener('stalled', () => { if (!audioEl.muted) reconnectAudio(); });
 
     avConnect();
   </script>

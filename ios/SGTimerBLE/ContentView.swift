@@ -31,25 +31,15 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
+                serverInfoSection
                 timerDeviceSection
                 streamTitleSection
                 cameraStreamSection
-                saveRestartSection
+                saveSettingsSection
             }
             .navigationTitle("SG Timer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if server.isRunning {
-                        Text("http://\(server.localIP):8080")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.green)
-                    } else {
-                        Text("Starting…")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if server.isRunning {
                         Button {
@@ -74,6 +64,25 @@ struct ContentView: View {
     }
 
     // MARK: - Form sections
+
+    private var serverInfoSection: some View {
+        Section {
+            HStack {
+                Image(systemName: "wifi")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if server.isRunning {
+                    Text("http://\(server.localIP):8080")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.green)
+                } else {
+                    Text("Starting…")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
 
     private var timerDeviceSection: some View {
         Section("Timer Device") {
@@ -177,14 +186,19 @@ struct ContentView: View {
         }
     }
 
-    private var saveRestartSection: some View {
-        Section {
-            Button(role: .destructive) {
-                server.saveAndRestart()
+    private var saveSettingsSection: some View {
+        Section(footer: Group {
+            if server.isRunning {
+                Text("Admin panel: http://\(server.localIP):8080/admin.html")
+                    .font(.caption)
+            }
+        }) {
+            Button {
+                server.saveSettingsAndReload()
             } label: {
                 HStack {
                     Spacer()
-                    Text("Save & Restart Server")
+                    Text("Save Settings")
                     Spacer()
                 }
             }
