@@ -623,8 +623,22 @@ class AppServer: ObservableObject {
                 "Connection":    "keep-alive"
             ]) { [weak self] writer in
                 defer { self?.camera.unsubscribeMjpeg(subId) }
+                var lastWrite = CFAbsoluteTimeGetCurrent()
                 while true {
                     guard let frame = sub.next(timeout: 0.5) else { continue }
+
+                    // Pace delivery to the target frame interval. Without this, variable
+                    // JPEG encode times (fast at high quality, erratic at low quality)
+                    // propagate directly to the browser as irregular inter-frame gaps.
+                    let fps = self?.cameraFPS ?? 30
+                    let interval = 1.0 / fps
+                    let now = CFAbsoluteTimeGetCurrent()
+                    let remaining = interval - (now - lastWrite)
+                    if remaining > 0.001 {
+                        Thread.sleep(forTimeInterval: remaining)
+                    }
+                    lastWrite = CFAbsoluteTimeGetCurrent()
+
                     let hdr = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(frame.count)\r\n\r\n"
                     // Single write = one TCP segment, eliminates Nagle fragmentation jitter
                     var packet = [UInt8]()
