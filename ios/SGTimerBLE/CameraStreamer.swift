@@ -61,8 +61,6 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     // Rate limiter sets the target interval; encodeInFlight prevents queue buildup when encoding
     // is slower than the target (graceful degradation under thermal load, no jitter).
     private let encodeQueue = DispatchQueue(label: "camera.encode", qos: .userInitiated)
-    private var lastStreamTimestamp: CFAbsoluteTime = 0
-    var streamFrameInterval: CFTimeInterval = 1.0 / 30.0   // updated by AppServer when FPS changes
     private var encodeInFlight = false
     private let encodeInFlightLock = NSLock()
 
@@ -123,7 +121,6 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 
     func setFPS(_ fps: Double) {
-        streamFrameInterval = 1.0 / fps
         guard let device = captureSession.inputs
             .compactMap({ ($0 as? AVCaptureDeviceInput)?.device })
             .first(where: { $0.hasMediaType(.video) }) else { return }
@@ -239,20 +236,13 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         // Recorder always gets every frame at full rate.
         onRawSampleBuffer?(sampleBuffer)
 
-        // Rate-limit stream encoding to a fixed interval on the capture queue
-        // (cheap: just a timestamp comparison). This makes delivery timing
-        // deterministic regardless of how long encoding takes under thermal load.
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastStreamTimestamp >= streamFrameInterval else { return }
-        lastStreamTimestamp = now
-
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // CIImage creation is lazy (no rendering yet) and fast. It retains the
-        // pixel buffer internally via ARC, keeping it valid on the encode queue
-        // after this callback returns — no manual retain/release needed.
-        // Drop frame if previous encode is still running (prevents queue buildup
-        // when encoding is slower than the target rate under thermal load).
+        // Drop frame if previous encode is still running. This is the only
+        // backpressure needed — no timestamp rate limiter. A timestamp limiter
+        // at exactly 1/fps causes 50% frame drops when the camera delivers
+        // frames ~1% early (33.0 ms vs 33.33 ms threshold → every other frame
+        // dropped → 15 fps on a 30 fps camera).
         encodeInFlightLock.lock()
         guard !encodeInFlight else { encodeInFlightLock.unlock(); return }
         encodeInFlight = true
