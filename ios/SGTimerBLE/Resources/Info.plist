@@ -53,9 +53,12 @@
         <dict/>
     </dict>
 
-    <!-- Launch screen storyboard — shown by iOS before the app process starts -->
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
+    <!-- Launch screen — gray background matches SplashView; no storyboard needed -->
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>LaunchBackground</string>
+    </dict>
 
     <!-- BLE required capability -->
     <key>UIRequiredDeviceCapabilities</key>
