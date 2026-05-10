@@ -27,6 +27,7 @@ class AppServer: ObservableObject {
     @Published var consoleLines: [String] = []
     @Published var isRecording: Bool = false
     @Published var streamResolution: String = "720p"
+    @Published var videoQuality: String = "normal"
 
     // MARK: - Internal
     private var hasStarted = false          // guards against double startServer() calls
@@ -160,6 +161,9 @@ class AppServer: ObservableObject {
             streamResolution = res
             applyStreamResolution(res)
         }
+        if let q = defaults.string(forKey: "videoQuality") {
+            videoQuality = q
+        }
     }
 
     func saveSettings() {
@@ -170,6 +174,21 @@ class AppServer: ObservableObject {
         defaults.set(avDelayMs, forKey: "avDelayMs")
         defaults.set(overlayDelayMs, forKey: "overlayDelayMs")
         defaults.set(streamResolution, forKey: "streamResolution")
+        defaults.set(videoQuality, forKey: "videoQuality")
+    }
+
+    private func bitrateMultiplier(for quality: String) -> Double {
+        switch quality {
+        case "low":  return 0.3
+        case "high": return 1.0
+        default:     return 0.6  // normal
+        }
+    }
+
+    func updateVideoQuality(_ q: String) {
+        videoQuality = q
+        saveSettings()
+        broadcast(settingsDict())
     }
 
     private func applyStreamResolution(_ res: String) {
@@ -248,7 +267,7 @@ class AppServer: ObservableObject {
         guard !isRecording else { return }
         do {
             let videoSize = camera.currentOutputSize
-            try recorder.start(videoSize: videoSize)
+            try recorder.start(videoSize: videoSize, bitrateMultiplier: bitrateMultiplier(for: videoQuality))
             isRecording = true
             appendConsole("⏺ Recording started")
             refreshOverlay()
@@ -433,7 +452,8 @@ class AppServer: ObservableObject {
             "avDelayMs": avDelayMs,
             "overlayDelayMs": overlayDelayMs,
             "currentLensId": currentLensId,
-            "streamResolution": streamResolution
+            "streamResolution": streamResolution,
+            "videoQuality": videoQuality
         ]
     }
 
@@ -684,7 +704,8 @@ class AppServer: ObservableObject {
                 "avDelayMs": self.avDelayMs,
                 "overlayDelayMs": self.overlayDelayMs,
                 "currentLensId": self.currentLensId,
-                "streamResolution": self.streamResolution
+                "streamResolution": self.streamResolution,
+                "videoQuality": self.videoQuality
             ])
         }
 
@@ -708,6 +729,10 @@ class AppServer: ObservableObject {
             if let res = body["streamResolution"] as? String,
                ["720p", "1080p", "1440p", "4k"].contains(res) {
                 DispatchQueue.main.async { self.updateStreamResolution(res) }
+            }
+            if let q = body["videoQuality"] as? String,
+               ["low", "normal", "high"].contains(q) {
+                DispatchQueue.main.async { self.videoQuality = q }
             }
             self.saveSettings()
             self.broadcast(self.settingsDict())

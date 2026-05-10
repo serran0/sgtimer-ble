@@ -176,6 +176,15 @@ struct ContentView: View {
                 Text("4K").tag("4k")
             }
 
+            Picker("Recording Quality", selection: Binding(
+                get: { server.videoQuality },
+                set: { server.updateVideoQuality($0) }
+            )) {
+                Text("Low").tag("low")
+                Text("Normal").tag("normal")
+                Text("High").tag("high")
+            }
+
             Picker("Frame Rate", selection: Binding(
                 get: { Int(server.cameraFPS) },
                 set: { server.updateFPS($0) }
@@ -223,7 +232,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer Server v0.69")
+                Text("SG Timer Server v0.70")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
