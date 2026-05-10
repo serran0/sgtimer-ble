@@ -205,11 +205,25 @@ class Recorder {
         CMBlockBufferAssureBlockMemory(blockBuf)
         CMBlockBufferReplaceDataBytes(with: dataPtr, blockBuffer: blockBuf, offsetIntoDestination: 0, dataLength: dataSize)
 
-        let pts = CMTime(value:     CMTimeValue(time.sampleTime),
+        // Convert AVAudioTime to host-clock CMTime so it aligns with the camera
+        // presentation timestamps used to start the AVAssetWriter session.
+        // sampleTime counts samples since engine start (e.g. ~10 s) while the
+        // video PTS is device uptime (~750 s); using sampleTime causes every audio
+        // buffer to be timestamped before the session start and silently dropped.
+        let pts: CMTime
+        if time.isHostTimeValid {
+            var tb = mach_timebase_info_data_t()
+            mach_timebase_info(&tb)
+            let nsec = Double(time.hostTime) * Double(tb.numer) / Double(tb.denom)
+            pts = CMTimeMakeWithSeconds(nsec / 1_000_000_000,
+                                        preferredTimescale: CMTimeScale(fmt.sampleRate))
+        } else {
+            pts = CMTime(value: CMTimeValue(time.sampleTime),
                          timescale: CMTimeScale(fmt.sampleRate))
+        }
+        // duration is per-sample (not the whole buffer) when sampleCount > 1
         var timing = CMSampleTimingInfo(
-            duration:               CMTime(value: CMTimeValue(frameCount),
-                                           timescale: CMTimeScale(fmt.sampleRate)),
+            duration:               CMTime(value: 1, timescale: CMTimeScale(fmt.sampleRate)),
             presentationTimeStamp:  pts,
             decodeTimeStamp:        .invalid
         )
