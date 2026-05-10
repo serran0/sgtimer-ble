@@ -266,7 +266,9 @@ class AppServer: ObservableObject {
         let title     = titleText
         let videoSize = camera.currentOutputSize
 
-        let renderer = UIGraphicsImageRenderer(size: videoSize)
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1.0       // render at 1:1 pixel — matches video frame dimensions exactly
+        let renderer = UIGraphicsImageRenderer(size: videoSize, format: fmt)
         let img = renderer.image { ctx in
             let g = ctx.cgContext
             let pad: CGFloat = 20

@@ -20,8 +20,7 @@ class Recorder {
     private var sessionStarted = false
 
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-    private var audioConverter: AVAudioConverter?
-    private var targetAudioFormat: AVAudioFormat?
+    private var hwAudioFormat: AVAudioFormat?
     private var audioSourceFmtDesc: CMAudioFormatDescription?
 
     private(set) var isActive = false
@@ -29,13 +28,10 @@ class Recorder {
     // MARK: - Audio setup (call before start, once AudioStreamer has started)
 
     func configureAudio(from hwFormat: AVAudioFormat) {
-        guard let target = AVAudioFormat(commonFormat: .pcmFormatInt16,
-                                         sampleRate: hwFormat.sampleRate,
-                                         channels: 1, interleaved: true) else { return }
-        targetAudioFormat = target
-        audioConverter = AVAudioConverter(from: hwFormat, to: target)
-
-        var asbd = target.streamDescription.pointee
+        hwAudioFormat = hwFormat
+        // Build format description from the hardware format directly — AVAssetWriter
+        // encodes float32 PCM to AAC without a PCM-to-PCM conversion step.
+        var asbd = hwFormat.streamDescription.pointee
         var desc: CMAudioFormatDescription?
         CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd,
                                        layoutSize: 0, layout: nil,
@@ -74,11 +70,11 @@ class Recorder {
             ]
         )
 
-        // Audio — AAC mono
+        // Audio — AAC, channel count and sample rate matched to hardware format
         let aSettings: [String: Any] = [
             AVFormatIDKey:         kAudioFormatMPEG4AAC,
-            AVSampleRateKey:       targetAudioFormat?.sampleRate ?? 44100.0,
-            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey:       hwAudioFormat?.sampleRate ?? 44100.0,
+            AVNumberOfChannelsKey: Int(hwAudioFormat?.channelCount ?? 1),
             AVEncoderBitRateKey:   96_000
         ]
         let aInput = AVAssetWriterInput(mediaType: .audio,
@@ -167,27 +163,7 @@ class Recorder {
         guard isActive, sessionStarted,
               let writer = assetWriter, writer.status == .writing,
               let aInput = audioInput, aInput.isReadyForMoreMediaData else { return }
-
-        let pcm: AVAudioPCMBuffer
-        if let conv = audioConverter,
-           let target = targetAudioFormat,
-           let out = AVAudioPCMBuffer(pcmFormat: target,
-                                      frameCapacity: buffer.frameCapacity) {
-            var err: NSError?
-            var inputGiven = false
-            conv.convert(to: out, error: &err) { _, status in
-                if inputGiven { status.pointee = .noDataNow; return nil }
-                status.pointee = .haveData
-                inputGiven = true
-                return buffer
-            }
-            guard err == nil, out.frameLength > 0 else { return }
-            pcm = out
-        } else {
-            pcm = buffer
-        }
-
-        guard let sb = Self.makeCMSampleBuffer(from: pcm, time: time) else { return }
+        guard let sb = Self.makeCMSampleBuffer(from: buffer, time: time) else { return }
         aInput.append(sb)
     }
 
