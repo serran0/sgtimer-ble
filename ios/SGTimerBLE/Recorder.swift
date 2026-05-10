@@ -203,7 +203,7 @@ class Recorder {
             blockBufferOut: &blockBuf
         ) == noErr, let blockBuf else { return nil }
         CMBlockBufferAssureBlockMemory(blockBuf)
-        CMBlockBufferReplaceDataBytes(dataPtr, blockBuf, 0, dataSize)
+        CMBlockBufferReplaceDataBytes(with: dataPtr, blockBuffer: blockBuf, offsetIntoDestination: 0, dataLength: dataSize)
 
         let pts = CMTime(value:     CMTimeValue(time.sampleTime),
                          timescale: CMTimeScale(fmt.sampleRate))
