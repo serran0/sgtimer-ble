@@ -127,7 +127,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         if let conn = videoOutput.connection(with: .video) {
             applyVideoOrientation(to: conn)
             if conn.isVideoStabilizationSupported {
-                conn.preferredVideoStabilizationMode = .cinematic
+                conn.preferredVideoStabilizationMode = .standard
             }
         }
 

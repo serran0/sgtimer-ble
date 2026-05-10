@@ -41,7 +41,7 @@
   </div>
 
   <!-- Delay globals — updated from /get_settings on load -->
-  <script>let AUDIO_BUFFER_MS = 700; let OVERLAY_DELAY_MS = 700;</script>
+  <script>let AUDIO_BUFFER_MS = 300; let AV_DELAY_MS = 0;</script>
   <script src="js/app.js"></script>
   <script>
     // ── A/V WebSocket stream ──────────────────────────────────────────
@@ -71,7 +71,7 @@
     function startAudio() {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        nextTime = audioCtx.currentTime + AUDIO_BUFFER_MS / 1000;
+        nextTime = audioCtx.currentTime + (AUDIO_BUFFER_MS + AV_DELAY_MS) / 1000;
       }
       if (audioCtx.state !== 'running') {
         audioCtx.resume().catch(() => {});
@@ -114,17 +114,15 @@
     let rafScheduled = false;
 
     function showVideoFrame(jpegBytes) {
-      videoQueue.push({ url: URL.createObjectURL(new Blob([jpegBytes], { type: 'image/jpeg' })),
-                        ts: performance.now() });
+      videoQueue.push(URL.createObjectURL(new Blob([jpegBytes], { type: 'image/jpeg' })));
       if (!rafScheduled) { rafScheduled = true; requestAnimationFrame(drainVideoQueue); }
     }
 
     function drainVideoQueue() {
-      const now = performance.now();
       let showUrl = null;
-      while (videoQueue.length && now - videoQueue[0].ts >= AUDIO_BUFFER_MS) {
+      while (videoQueue.length) {
         if (showUrl) URL.revokeObjectURL(showUrl);
-        showUrl = videoQueue.shift().url;
+        showUrl = videoQueue.shift();
       }
       if (showUrl) {
         const prev = cameraBg.src;

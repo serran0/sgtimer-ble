@@ -180,15 +180,15 @@ struct ContentView: View {
                     get: { server.avSyncDelayMs },
                     set: { server.updateSyncDelay($0) }
                 ),
-                in: 0...2000,
+                in: 0...1000,
                 step: 10
             )
 
             Stepper(
-                "Overlay Delay: \(server.overlayDelayMs) ms",
+                "A/V Delay: \(server.avDelayMs) ms",
                 value: Binding(
-                    get: { server.overlayDelayMs },
-                    set: { server.updateOverlayDelay($0) }
+                    get: { server.avDelayMs },
+                    set: { server.updateAvDelay($0) }
                 ),
                 in: 0...2000,
                 step: 10
@@ -203,7 +203,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer v0.41")
+                Text("SG Timer v0.42")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

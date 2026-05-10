@@ -102,7 +102,7 @@ function resetInactivityTimer() {
     const res = await fetch("/get_settings");
     const d = await res.json();
     if (typeof d.avSyncDelayMs === "number") window.AUDIO_BUFFER_MS = d.avSyncDelayMs;
-    if (typeof d.overlayDelayMs === "number") window.OVERLAY_DELAY_MS = d.overlayDelayMs;
+    if (typeof d.avDelayMs === "number") window.AV_DELAY_MS = d.avDelayMs;
   } catch (e) { /* non-iOS server, ignore */ }
 
   try {
@@ -178,7 +178,7 @@ ws.onmessage = (e) => {
   if (immediateTypes.includes(msg.type)) { handleMessage(msg); return; }
 
   // Timer events are delayed to stay in sync with the video latency.
-  const delay = (typeof OVERLAY_DELAY_MS !== 'undefined') ? OVERLAY_DELAY_MS : 0;
+  const delay = (typeof AV_DELAY_MS !== 'undefined') ? AV_DELAY_MS : 0;
   setTimeout(() => handleMessage(msg), delay);
 };
 
@@ -224,7 +224,7 @@ function handleMessage(msg) {
 
   if (msg.type === "SETTINGS_UPDATE") {
     if (typeof msg.avSyncDelayMs === "number") window.AUDIO_BUFFER_MS = msg.avSyncDelayMs;
-    if (typeof msg.overlayDelayMs === "number") window.OVERLAY_DELAY_MS = msg.overlayDelayMs;
+    if (typeof msg.avDelayMs === "number") window.AV_DELAY_MS = msg.avDelayMs;
     return;
   }
 
