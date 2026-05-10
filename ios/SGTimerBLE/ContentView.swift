@@ -72,7 +72,7 @@ struct ContentView: View {
     private var previewOverlay: some View {
         ZStack(alignment: .bottom) {
             // The exact same page remote clients see — camera bg + timer overlay
-            AppWebView(url: URL(string: "http://127.0.0.1:8080/")!, opaque: true)
+            AppWebView(url: URL(string: "http://127.0.0.1:8080/?preview=1")!, opaque: true)
                 .ignoresSafeArea()
 
             // Close button (top-right)

@@ -45,10 +45,39 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     func start() throws {
         try switchLens(to: .builtInWideAngleCamera)
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(deviceOrientationChanged),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
     }
 
     func stop() {
+        NotificationCenter.default.removeObserver(self,
+            name: UIDevice.orientationDidChangeNotification, object: nil)
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
         captureSession.stopRunning()
+    }
+
+    // MARK: - Orientation tracking
+
+    @objc private func deviceOrientationChanged() {
+        if let conn = videoOutput.connection(with: .video) {
+            applyVideoOrientation(to: conn)
+        }
+    }
+
+    private func applyVideoOrientation(to connection: AVCaptureConnection) {
+        guard connection.isVideoOrientationSupported else { return }
+        switch UIDevice.current.orientation {
+        case .portrait:            connection.videoOrientation = .portrait
+        case .portraitUpsideDown:  connection.videoOrientation = .portraitUpsideDown
+        case .landscapeLeft:       connection.videoOrientation = .landscapeRight
+        case .landscapeRight:      connection.videoOrientation = .landscapeLeft
+        default: break
+        }
     }
 
     // MARK: - Lens switching
@@ -91,6 +120,10 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
         captureSession.commitConfiguration()
         currentDeviceType = deviceType
+
+        if let conn = videoOutput.connection(with: .video) {
+            applyVideoOrientation(to: conn)
+        }
 
         if !captureSession.isRunning {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in

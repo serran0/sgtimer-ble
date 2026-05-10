@@ -76,6 +76,11 @@
     const audioEl  = document.getElementById('audioEl');
     const audioBtn = document.getElementById('audioBtn');
 
+    // In the native preview overlay (?preview=1) we skip all audio to avoid
+    // a feedback loop between the phone's speaker and microphone.
+    const isPreview = new URLSearchParams(location.search).get('preview') === '1';
+    if (isPreview) audioBtn.style.display = 'none';
+
     let avMuted       = false; // start unmuted
     let avWs          = null;
     let audioCtx      = null;
@@ -84,6 +89,16 @@
     let pendingDecodes = 0;
     const MAX_PENDING  = 3;    // drop chunks if decode is falling behind
     const MAX_AHEAD    = 1.0;  // drop chunks if scheduled >1 s in the future
+
+    // ── Auto-resume AudioContext on any user interaction ──────────────
+    // Browsers block AudioContext until a gesture has occurred. Any tap or
+    // click on the page counts — the user never has to touch the mute button.
+    function tryResumeAudio() {
+      if (avMuted || !audioCtx || audioCtx.state === 'running') return;
+      audioCtx.resume().catch(() => {});
+    }
+    document.addEventListener('click',      tryResumeAudio, { passive: true });
+    document.addEventListener('touchstart', tryResumeAudio, { passive: true });
 
     function avConnect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -99,7 +114,7 @@
         const type    = buf[0];
         const payload = buf.slice(1); // copy, not a view
         if      (type === 0x01) showVideoFrame(payload);
-        else if (type === 0x02 && !avMuted) scheduleAudio(payload);
+        else if (type === 0x02 && !avMuted && !isPreview) scheduleAudio(payload);
       };
 
       avWs.onclose = avWs.onerror = () => {
@@ -139,21 +154,12 @@
     function scheduleAudio(chunk) {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        audioCtx.resume().then(() => {
-          // Browser autoplay policy may block the context — revert to muted so
-          // the icon accurately reflects state and a tap will enable audio.
-          if (audioCtx && audioCtx.state !== 'running') {
-            avMuted = true;
-            audioCtx.close(); audioCtx = null;
-            audioBtn.textContent = '🔇';
-          }
-        }).catch(() => {
-          avMuted = true;
-          if (audioCtx) { audioCtx.close(); audioCtx = null; }
-          audioBtn.textContent = '🔇';
-        });
-        nextTime = audioCtx.currentTime + 0.15;
+        audioCtx.resume().catch(() => {}); // succeeds immediately if allowed; otherwise
+        nextTime = audioCtx.currentTime + 0.15; // tryResumeAudio() handles the rest
       }
+      // If context is still blocked, drop the chunk — audio will catch up once
+      // the user touches the screen (handled by tryResumeAudio above).
+      if (audioCtx.state !== 'running') return;
       // Drop if decode pipeline is backed up or scheduled too far ahead
       if (pendingDecodes >= MAX_PENDING) return;
       if (nextTime > audioCtx.currentTime + MAX_AHEAD) return;
