@@ -242,11 +242,10 @@ class AppServer: ObservableObject {
     }
 
     // Render current timer state onto a CIImage and push to recorder.
-    // Called immediately after state changes, with overlayDelayMs applied.
+    // Always applied immediately (0 ms) — recording A/V is already in sync.
     private func scheduleOverlayRefresh() {
         guard isRecording else { return }
-        let delay = Double(overlayDelayMs) / 1000.0
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             self?.refreshOverlay()
         }
     }
@@ -263,7 +262,6 @@ class AppServer: ObservableObject {
         let totalShots = timerState.shots.count
         stateLock.unlock()
 
-        let title     = titleText
         let videoSize = camera.currentOutputSize
 
         let fmt = UIGraphicsImageRendererFormat()
@@ -279,14 +277,6 @@ class AppServer: ObservableObject {
                 g.setFillColor(UIColor.black.withAlphaComponent(alpha).cgColor)
                 UIBezierPath(roundedRect: rect, cornerRadius: 8).fill()
             }
-
-            // Title — top centre
-            let tFont = UIFont.boldSystemFont(ofSize: 32)
-            let tAttr: [NSAttributedString.Key: Any] = [.font: tFont, .foregroundColor: UIColor.white]
-            let tSz   = (title as NSString).size(withAttributes: tAttr)
-            let tRect = CGRect(x: (W - tSz.width) / 2, y: pad, width: tSz.width, height: tSz.height)
-            bg(tRect.insetBy(dx: -12, dy: -6))
-            (title as NSString).draw(at: tRect.origin, withAttributes: tAttr)
 
             // Status — top right
             let statusColor: UIColor = status == "LIVE"    ? .systemGreen
