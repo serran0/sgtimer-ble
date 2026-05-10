@@ -14,6 +14,40 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private let captureQueue = DispatchQueue(label: "camera.capture", qos: .userInitiated)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
+    // MJPEG push subscription — mirrors AudioStreamer.Subscriber
+    final class MjpegSubscriber {
+        private var latest: Data? = nil
+        private let lock = NSLock()
+        private let sem  = DispatchSemaphore(value: 0)
+
+        fileprivate func push(_ frame: Data) {
+            lock.lock()
+            let wasNil = (latest == nil)
+            latest = frame          // drop older unread frame; always keep newest
+            lock.unlock()
+            if wasNil { sem.signal() }
+        }
+
+        func next(timeout: TimeInterval = 0.5) -> Data? {
+            guard sem.wait(timeout: .now() + timeout) == .success else { return nil }
+            lock.lock(); defer { lock.unlock() }
+            let f = latest; latest = nil; return f
+        }
+    }
+
+    private var mjpegSubs = [UUID: MjpegSubscriber]()
+    private let mjpegSubLock = NSLock()
+
+    func subscribeMjpeg() -> (UUID, MjpegSubscriber) {
+        let id = UUID(); let sub = MjpegSubscriber()
+        mjpegSubLock.lock(); mjpegSubs[id] = sub; mjpegSubLock.unlock()
+        return (id, sub)
+    }
+
+    func unsubscribeMjpeg(_ id: UUID) {
+        mjpegSubLock.lock(); mjpegSubs.removeValue(forKey: id); mjpegSubLock.unlock()
+    }
+
     private var _currentFrame: Data?
     private let frameLock = NSLock()
 
@@ -203,6 +237,11 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         frameLock.unlock()
 
         onFrame?(jpegData)
+
+        mjpegSubLock.lock()
+        let subs = Array(mjpegSubs.values)
+        mjpegSubLock.unlock()
+        subs.forEach { $0.push(jpegData) }
 
         bitrateAccBytes += jpegData.count
         let elapsed = Date().timeIntervalSince(bitrateWindowStart)

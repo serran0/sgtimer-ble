@@ -607,24 +607,23 @@ class AppServer: ObservableObject {
         // ── MJPEG camera stream ────────────────────────────────
         http.GET["/camera"] = { [weak self] _ in
             guard let self else { return .internalServerError }
-            let headers: [String: String] = [
+            let (subId, sub) = self.camera.subscribeMjpeg()
+            return .raw(200, "OK", [
                 "Content-Type":  "multipart/x-mixed-replace; boundary=frame",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Connection":    "keep-alive"
-            ]
-            return .raw(200, "OK", headers) { [weak self] writer in
-                while let self {
-                    if let frame = self.camera.currentFrame() {
-                        let hdr = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(frame.count)\r\n\r\n"
-                        do {
-                            try writer.write(Array(hdr.utf8))
-                            try writer.write(frame)
-                            try writer.write(Array("\r\n".utf8))
-                        } catch {
-                            break
-                        }
+            ]) { [weak self] writer in
+                defer { self?.camera.unsubscribeMjpeg(subId) }
+                while true {
+                    guard let frame = sub.next(timeout: 0.5) else { continue }
+                    let hdr = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(frame.count)\r\n\r\n"
+                    do {
+                        try writer.write(Array(hdr.utf8))
+                        try writer.write(frame)
+                        try writer.write(Array("\r\n".utf8))
+                    } catch {
+                        break
                     }
-                    Thread.sleep(forTimeInterval: 1.0 / self.cameraFPS)
                 }
             }
         }
