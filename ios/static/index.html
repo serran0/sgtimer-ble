@@ -93,9 +93,21 @@
     // ── Auto-resume AudioContext on any user interaction ──────────────
     // Browsers block AudioContext until a gesture has occurred. Any tap or
     // click on the page counts — the user never has to touch the mute button.
+    // Key: we also CREATE the context here when it doesn't exist yet, because
+    // a context created directly inside a gesture handler starts in 'running'
+    // state on iOS Safari (no separate resume() call needed).
     function tryResumeAudio() {
-      if (avMuted || !audioCtx || audioCtx.state === 'running') return;
-      audioCtx.resume().catch(() => {});
+      if (avMuted) return;
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        nextTime = audioCtx.currentTime + 0.15;
+        return; // already running — chunks will play as soon as they arrive
+      }
+      if (audioCtx.state !== 'running') {
+        audioCtx.resume().then(() => {
+          if (audioCtx) nextTime = audioCtx.currentTime + 0.15; // re-anchor schedule
+        }).catch(() => {});
+      }
     }
     document.addEventListener('click',      tryResumeAudio, { passive: true });
     document.addEventListener('touchstart', tryResumeAudio, { passive: true });
