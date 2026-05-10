@@ -40,3 +40,4 @@ targets:
         SWIFT_VERSION: "5.9"
         DEVELOPMENT_TEAM: ""               # Fill in your Apple Team ID
         CODE_SIGN_STYLE: Automatic
+        SWIFT_COMPILATION_MODE: incremental
