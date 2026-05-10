@@ -20,6 +20,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     var onFrame: ((Data) -> Void)?
     var onRawSampleBuffer: ((CMSampleBuffer) -> Void)?
     var streamMaxDimension: CGFloat = 1280
+    var streamJpegQuality: CGFloat = 0.65
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
     private(set) var activePreset: AVCaptureSession.Preset = .hd1280x720
 
@@ -191,7 +192,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
             : ciImage
         guard let cgImage = ciContext.createCGImage(streamImage, from: streamImage.extent) else { return }
         let uiImage = UIImage(cgImage: cgImage)
-        guard let jpegData = uiImage.jpegData(compressionQuality: 0.65) else { return }
+        guard let jpegData = uiImage.jpegData(compressionQuality: streamJpegQuality) else { return }
 
         frameLock.lock()
         _currentFrame = jpegData

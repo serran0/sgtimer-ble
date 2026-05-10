@@ -363,8 +363,8 @@ function applySettings(d) {
   if (d.currentLensId) updateLensButtons(d.currentLensId);
   const resSelect = document.getElementById("streamResolutionSelect");
   if (resSelect && d.streamResolution) resSelect.value = d.streamResolution;
-  const qualitySelect = document.getElementById("videoQualitySelect");
-  if (qualitySelect && d.videoQuality) qualitySelect.value = d.videoQuality;
+  const qualitySelect = document.getElementById("streamQualitySelect");
+  if (qualitySelect && d.streamQuality) qualitySelect.value = d.streamQuality;
 }
 
 async function loadSettings() {
@@ -382,14 +382,14 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", async () =
   const avDelay = parseInt(document.getElementById("avDelayInput")?.value || "0");
   const overlayDelay = parseInt(document.getElementById("overlayDelayInput")?.value || "200");
   const streamResolution = document.getElementById("streamResolutionSelect")?.value || "720p";
-  const videoQuality = document.getElementById("videoQualitySelect")?.value || "normal";
+  const streamQuality = document.getElementById("streamQualitySelect")?.value || "normal";
   try {
     const res = await fetch("/save_settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fps, avSyncDelayMs: delay, avDelayMs: avDelay, overlayDelayMs: overlayDelay, streamResolution, videoQuality }),
+      body: JSON.stringify({ fps, avSyncDelayMs: delay, avDelayMs: avDelay, overlayDelayMs: overlayDelay, streamResolution, streamQuality }),
     });
-    if (res.ok) log(`✅ Settings saved (${fps} fps, ${delay}ms audio buffer, ${avDelay}ms A/V delay, ${overlayDelay}ms overlay, stream ${streamResolution}, quality ${videoQuality}) — reloading clients in 1s…`);
+    if (res.ok) log(`✅ Settings saved (${fps} fps, ${delay}ms audio buffer, ${avDelay}ms A/V delay, ${overlayDelay}ms overlay, stream ${streamResolution}, quality ${streamQuality}) — reloading clients in 1s…`);
     else log("⚠️ Failed to save settings");
   } catch (e) {
     log("Error saving settings: " + e.message);

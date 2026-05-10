@@ -42,7 +42,7 @@ class Recorder {
 
     // MARK: - Lifecycle
 
-    func start(videoSize: CGSize, bitrateMultiplier: Double = 1.0) throws {
+    func start(videoSize: CGSize) throws {
         guard !isActive else { return }
 
         let url = FileManager.default.temporaryDirectory
@@ -51,10 +51,9 @@ class Recorder {
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
 
-        // Video — H.264, bitrate scaled to resolution and quality
+        // Video — H.264, bitrate scaled to resolution
         let longestEdge = max(videoSize.width, videoSize.height)
-        let baseBitrate = longestEdge >= 3840 ? 40_000_000.0 : longestEdge >= 1920 ? 16_000_000.0 : 8_000_000.0
-        let videoBitrate = Int(baseBitrate * bitrateMultiplier)
+        let videoBitrate = longestEdge >= 3840 ? 40_000_000 : longestEdge >= 1920 ? 16_000_000 : 8_000_000
         let vSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(videoSize.width),
