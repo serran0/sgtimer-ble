@@ -18,7 +18,18 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private let frameLock = NSLock()
 
     var onFrame: ((Data) -> Void)?
+    var onRawSampleBuffer: ((CMSampleBuffer) -> Void)?
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
+
+    var currentOutputSize: CGSize {
+        if let conn = videoOutput.connection(with: .video) {
+            switch conn.videoOrientation {
+            case .portrait, .portraitUpsideDown: return CGSize(width: 720, height: 1280)
+            default: break
+            }
+        }
+        return CGSize(width: 1280, height: 720)
+    }
 
     var captureSession_: AVCaptureSession { captureSession }
 
@@ -151,6 +162,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        onRawSampleBuffer?(sampleBuffer)
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)

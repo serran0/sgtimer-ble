@@ -1,5 +1,6 @@
 import Foundation
 import Swifter
+import UIKit
 
 class AppServer: ObservableObject {
     // MARK: - Sub-components
@@ -7,6 +8,7 @@ class AppServer: ObservableObject {
     let camera   = CameraStreamer()
     let audio    = AudioStreamer()
     let sessions = SessionsStore()
+    let recorder = Recorder()
 
     // MARK: - Published state
     @Published var isRunning = false
@@ -23,6 +25,7 @@ class AppServer: ObservableObject {
     @Published var isScanning: Bool = false
     @Published var scannedDevices: [BLEDeviceInfo] = []
     @Published var consoleLines: [String] = []
+    @Published var isRecording: Bool = false
 
     // MARK: - Internal
     private var hasStarted = false          // guards against double startServer() calls
@@ -63,6 +66,13 @@ class AppServer: ObservableObject {
         let savedDeviceType = lenses.first(where: { $0.id == currentLensId })?.deviceType ?? .builtInWideAngleCamera
         try? camera.start(initialLens: savedDeviceType)
         try? audio.start()
+
+        // Wire recorder: raw video and PCM audio
+        camera.onRawSampleBuffer = { [weak self] sb in self?.recorder.appendVideo(sb) }
+        audio.onRawPCMBuffer     = { [weak self] buf, time in
+            self?.recorder.appendAudio(buf, time: time)
+        }
+        if let fmt = audio.captureFormat { recorder.configureAudio(from: fmt) }
 
         // Wire A/V callbacks for the /avstream WebSocket mux
         camera.onFrame = { [weak self] jpeg in
@@ -204,6 +214,125 @@ class AppServer: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.broadcast(["type": "RELOAD"])
         }
+    }
+
+    // MARK: - Recording
+
+    func startRecording() {
+        guard !isRecording else { return }
+        do {
+            let videoSize = camera.currentOutputSize
+            try recorder.start(videoSize: videoSize)
+            isRecording = true
+            appendConsole("⏺ Recording started")
+            refreshOverlay()
+        } catch {
+            appendConsole("❌ Record error: \(error.localizedDescription)")
+        }
+    }
+
+    func stopRecording() {
+        guard isRecording else { return }
+        isRecording = false
+        recorder.stop { [weak self] success in
+            DispatchQueue.main.async {
+                self?.appendConsole(success ? "📹 Clip saved to Photos" : "❌ Save to Photos failed")
+            }
+        }
+    }
+
+    // Render current timer state onto a CIImage and push to recorder.
+    // Called immediately after state changes, with overlayDelayMs applied.
+    private func scheduleOverlayRefresh() {
+        guard isRecording else { return }
+        let delay = Double(overlayDelayMs) / 1000.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.refreshOverlay()
+        }
+    }
+
+    private func refreshOverlay() {
+        guard isRecording else { return }
+
+        stateLock.lock()
+        let shots      = Array(timerState.shots.suffix(8))
+        let status     = timerState.status
+        let firstShot  = timerState.firstShot
+        let bestSplit  = timerState.bestSplit
+        let totalTime  = timerState.totalTime
+        let totalShots = timerState.shots.count
+        stateLock.unlock()
+
+        let title     = titleText
+        let videoSize = camera.currentOutputSize
+
+        let renderer = UIGraphicsImageRenderer(size: videoSize)
+        let img = renderer.image { ctx in
+            let g = ctx.cgContext
+            let pad: CGFloat = 20
+            let W = videoSize.width
+            let H = videoSize.height
+
+            func bg(_ rect: CGRect, alpha: CGFloat = 0.55) {
+                g.setFillColor(UIColor.black.withAlphaComponent(alpha).cgColor)
+                UIBezierPath(roundedRect: rect, cornerRadius: 8).fill()
+            }
+
+            // Title — top centre
+            let tFont = UIFont.boldSystemFont(ofSize: 32)
+            let tAttr: [NSAttributedString.Key: Any] = [.font: tFont, .foregroundColor: UIColor.white]
+            let tSz   = (title as NSString).size(withAttributes: tAttr)
+            let tRect = CGRect(x: (W - tSz.width) / 2, y: pad, width: tSz.width, height: tSz.height)
+            bg(tRect.insetBy(dx: -12, dy: -6))
+            (title as NSString).draw(at: tRect.origin, withAttributes: tAttr)
+
+            // Status — top right
+            let statusColor: UIColor = status == "LIVE"    ? .systemGreen
+                                     : status == "STANDBY" ? .systemOrange : .systemRed
+            let sFont = UIFont.boldSystemFont(ofSize: 20)
+            let sAttr: [NSAttributedString.Key: Any] = [.font: sFont, .foregroundColor: statusColor]
+            let sSz   = (status as NSString).size(withAttributes: sAttr)
+            let sOrigin = CGPoint(x: W - sSz.width - pad - 12, y: pad + 4)
+            bg(CGRect(x: sOrigin.x - 10, y: sOrigin.y - 6, width: sSz.width + 20, height: sSz.height + 10))
+            (status as NSString).draw(at: sOrigin, withAttributes: sAttr)
+
+            // Stats — top left (only when shots exist)
+            if totalShots > 0 {
+                let mFont = UIFont.monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+                let mAttr: [NSAttributedString.Key: Any] = [.font: mFont, .foregroundColor: UIColor.white]
+                let lines = [
+                    "First:  \(String(format: "%.2f", firstShot)) s",
+                    "Best:   \(String(format: "%.2f", bestSplit)) s",
+                    "Total:  \(String(format: "%.2f", totalTime)) s",
+                    "Shots:  \(totalShots)"
+                ]
+                let lh: CGFloat = 24
+                let bh = CGFloat(lines.count) * lh + 16
+                bg(CGRect(x: pad - 8, y: pad - 6, width: 200, height: bh))
+                for (i, line) in lines.enumerated() {
+                    (line as NSString).draw(at: CGPoint(x: pad, y: pad + CGFloat(i) * lh),
+                                            withAttributes: mAttr)
+                }
+            }
+
+            // Shot list — bottom right
+            if !shots.isEmpty {
+                let shFont = UIFont.monospacedDigitSystemFont(ofSize: 20, weight: .semibold)
+                let lh: CGFloat = 28
+                let bw: CGFloat = 230
+                let bh = CGFloat(shots.count) * lh + 16
+                let bx = W - bw - pad
+                let by = H - bh - pad
+                bg(CGRect(x: bx - 8, y: by - 8, width: bw + 16, height: bh))
+                for (i, shot) in shots.reversed().enumerated() {
+                    let label = "#\(shot.num) — \(String(format: "%.2f", shot.time)) s"
+                    let attr: [NSAttributedString.Key: Any] = [.font: shFont, .foregroundColor: UIColor.white]
+                    (label as NSString).draw(at: CGPoint(x: bx, y: by + CGFloat(i) * lh),
+                                             withAttributes: attr)
+                }
+            }
+        }
+        recorder.overlayImage = CIImage(image: img)
     }
 
     // MARK: - Lens switching
@@ -383,6 +512,13 @@ class AppServer: ObservableObject {
             break
         }
         stateLock.unlock()
+
+        switch type {
+        case "SESSION_STARTED", "SHOT_DETECTED", "SESSION_STOPPED", "SESSION_SUSPENDED", "SESSION_RESUMED":
+            scheduleOverlayRefresh()
+        default:
+            break
+        }
 
         broadcast(event)
     }

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>SGTimer BLE</string>
+    <string>SG Timer Server</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -28,6 +28,8 @@
     <string>SGTimer BLE streams the camera as a live background on the display page for connected clients.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>SGTimer BLE streams microphone audio to connected display clients so the audience can hear the range.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>SG Timer Server saves recorded clips to your Photo Library.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>SGTimer BLE runs a local web server so clients on your Wi-Fi can view the timer display.</string>
     <key>NSBonjourServices</key>

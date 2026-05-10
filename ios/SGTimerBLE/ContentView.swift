@@ -213,7 +213,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer v0.44")
+                Text("SG Timer v0.50")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -266,26 +266,47 @@ struct ContentView: View {
                 Spacer()
             }
 
-            // Lens selector (bottom)
-            if server.availableLenses.count > 1 {
-                HStack(spacing: 8) {
-                    ForEach(server.availableLenses) { lens in
-                        Button(lens.label) {
-                            server.setLens(id: lens.id)
+            // Bottom controls: lens selector + record button
+            VStack(spacing: 10) {
+                if server.availableLenses.count > 1 {
+                    HStack(spacing: 8) {
+                        ForEach(server.availableLenses) { lens in
+                            Button(lens.label) {
+                                server.setLens(id: lens.id)
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(server.currentLensId == lens.id ? .black : .white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(server.currentLensId == lens.id
+                                        ? Color.white
+                                        : Color.black.opacity(0.5))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
                         }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(server.currentLensId == lens.id ? .black : .white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(server.currentLensId == lens.id
-                                    ? Color.white
-                                    : Color.black.opacity(0.5))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
                     }
                 }
-                .padding(.bottom, 32)
+
+                Button {
+                    if server.isRecording { server.stopRecording() }
+                    else { server.startRecording() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(server.isRecording ? Color.red : Color.white)
+                            .frame(width: 10, height: 10)
+                        Text(server.isRecording ? "Stop" : "Record")
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(server.isRecording ? .white : .black)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(server.isRecording ? Color.red.opacity(0.7) : Color.white)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
             }
+            .padding(.bottom, 32)
         }
     }
 }

@@ -30,6 +30,7 @@ class AudioStreamer {
     }
 
     var onFrame: ((Data) -> Void)?
+    var onRawPCMBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
 
     private var subscribers = [UUID: Subscriber]()
     private let subLock = NSLock()
@@ -56,6 +57,7 @@ class AudioStreamer {
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var hwSampleRate: Double = 44100
+    private(set) var captureFormat: AVAudioFormat?
 
     func start() throws {
         let session = AVAudioSession.sharedInstance()
@@ -65,7 +67,8 @@ class AudioStreamer {
 
         let inputNode = engine.inputNode
         let hwFormat  = inputNode.inputFormat(forBus: 0)
-        hwSampleRate  = hwFormat.sampleRate
+        hwSampleRate   = hwFormat.sampleRate
+        captureFormat  = hwFormat
 
         let aacSettings: [String: Any] = [
             AVFormatIDKey:         kAudioFormatMPEG4AAC,
@@ -84,7 +87,8 @@ class AudioStreamer {
         converter = conv
 
         // 1024 samples per tap == one AAC frame at standard rates
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buf, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buf, time in
+            self?.onRawPCMBuffer?(buf, time)
             self?.encodePCM(buf)
         }
         engine.prepare()
