@@ -58,11 +58,13 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     var streamJpegQuality: CGFloat = 0.65
 
     // Encode queue: ALL heavy work (CIImage → CGImage → JPEG) runs here, never on the capture queue.
-    // A fixed-interval rate limiter (not a binary in-flight flag) keeps delivery timing deterministic
-    // regardless of how long encoding actually takes under thermal load.
+    // Rate limiter sets the target interval; encodeInFlight prevents queue buildup when encoding
+    // is slower than the target (graceful degradation under thermal load, no jitter).
     private let encodeQueue = DispatchQueue(label: "camera.encode", qos: .userInitiated)
     private var lastStreamTimestamp: CFAbsoluteTime = 0
-    var streamFrameInterval: CFTimeInterval = 1.0 / 20.0   // 20 fps max for web stream
+    var streamFrameInterval: CFTimeInterval = 1.0 / 30.0   // updated by AppServer when FPS changes
+    private var encodeInFlight = false
+    private let encodeInFlightLock = NSLock()
 
     private var bitrateAccBytes: Int = 0
     private var bitrateWindowStart: Date = Date()
@@ -84,8 +86,6 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         return CGSize(width: lw, height: lh)
     }
-
-    var captureSession_: AVCaptureSession { captureSession }
 
     // MARK: - Lens enumeration
 
@@ -120,6 +120,18 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
             name: UIDevice.orientationDidChangeNotification,
             object: nil
         )
+    }
+
+    func setFPS(_ fps: Double) {
+        streamFrameInterval = 1.0 / fps
+        guard let device = captureSession.inputs
+            .compactMap({ ($0 as? AVCaptureDeviceInput)?.device })
+            .first(where: { $0.hasMediaType(.video) }) else { return }
+        let t = CMTime(value: 1, timescale: CMTimeScale(fps))
+        try? device.lockForConfiguration()
+        device.activeVideoMinFrameDuration = t
+        device.activeVideoMaxFrameDuration = t
+        device.unlockForConfiguration()
     }
 
     func stop() {
@@ -239,11 +251,23 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         // CIImage creation is lazy (no rendering yet) and fast. It retains the
         // pixel buffer internally via ARC, keeping it valid on the encode queue
         // after this callback returns — no manual retain/release needed.
+        // Drop frame if previous encode is still running (prevents queue buildup
+        // when encoding is slower than the target rate under thermal load).
+        encodeInFlightLock.lock()
+        guard !encodeInFlight else { encodeInFlightLock.unlock(); return }
+        encodeInFlight = true
+        encodeInFlightLock.unlock()
+
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         let quality = streamJpegQuality
         let maxDim = streamMaxDimension
 
         encodeQueue.async { [weak self] in
+            defer {
+                self?.encodeInFlightLock.lock()
+                self?.encodeInFlight = false
+                self?.encodeInFlightLock.unlock()
+            }
             guard let self else { return }
 
             // ALL heavy work (CGImage render → JPEG) runs here, never on

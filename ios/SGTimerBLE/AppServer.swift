@@ -69,6 +69,7 @@ class AppServer: ObservableObject {
         let lenses = CameraStreamer.availableLenses()
         let savedDeviceType = lenses.first(where: { $0.id == currentLensId })?.deviceType ?? .builtInWideAngleCamera
         try? camera.start(initialLens: savedDeviceType)
+        camera.setFPS(cameraFPS)   // apply saved FPS; switchLens defaults to 30
         try? audio.start()
 
         // Wire recorder: raw video and PCM audio
@@ -251,7 +252,13 @@ class AppServer: ObservableObject {
 
     func updateFPS(_ fps: Int) {
         cameraFPS = Double(fps)
+        applyFPS(Double(fps))
+        saveSettings()
         broadcast(settingsDict())
+    }
+
+    private func applyFPS(_ fps: Double) {
+        camera.setFPS(fps)
     }
 
     func updateSyncDelay(_ ms: Int) {
