@@ -114,6 +114,20 @@ struct ContentView: View {
                     server.scan()
                 }
             }
+
+            // 2-line event console
+            if !server.consoleLines.isEmpty {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(server.consoleLines.suffix(2), id: \.self) { line in
+                        Text(line)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+            }
         }
     }
 

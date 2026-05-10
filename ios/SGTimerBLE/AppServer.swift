@@ -20,6 +20,7 @@ class AppServer: ObservableObject {
     @Published var connectedDeviceAddress: String? = nil
     @Published var isScanning: Bool = false
     @Published var scannedDevices: [BLEDeviceInfo] = []
+    @Published var consoleLines: [String] = []
 
     // MARK: - Internal
     private let http = HttpServer()
@@ -249,12 +250,21 @@ class AppServer: ObservableObject {
         ]
     }
 
+    // MARK: - Console
+
+    private func appendConsole(_ line: String) {
+        DispatchQueue.main.async {
+            self.consoleLines.append(line)
+            if self.consoleLines.count > 50 { self.consoleLines.removeFirst() }
+        }
+    }
+
     // MARK: - BLE event dispatch
 
     private func handleBLEEvent(_ event: [String: Any]) {
         guard let type = event["type"] as? String else { return }
 
-        // Update native iOS UI for connection events
+        // Update native iOS UI for connection events and console
         switch type {
         case "DEVICE_CONNECTED":
             let name = event["name"] as? String ?? "Unknown"
@@ -264,11 +274,33 @@ class AppServer: ObservableObject {
                 self.connectedDeviceAddress = addr
                 self.scannedDevices = []
             }
+            appendConsole("✅ Connected: \(name)")
         case "DEVICE_DISCONNECTED":
+            let name = event["name"] as? String ?? "Unknown"
             DispatchQueue.main.async {
                 self.connectedDeviceName = nil
                 self.connectedDeviceAddress = nil
             }
+            appendConsole("⚠️ Disconnected: \(name)")
+        case "SESSION_STARTED":
+            appendConsole("🏁 Session started")
+        case "SESSION_STOPPED":
+            appendConsole("⏹ Session stopped")
+        case "SESSION_SUSPENDED":
+            appendConsole("⏸ Standby")
+        case "SESSION_RESUMED":
+            appendConsole("▶ Resumed")
+        case "SHOT_DETECTED":
+            let num  = event["num"]  as? Int    ?? 0
+            let time = event["time"] as? Double ?? 0
+            let split = event["split"] as? Double
+            var line = "#\(num) — \(String(format: "%.2f", time))s"
+            if let s = split { line += " [split: \(String(format: "%.2f", s))s]" }
+            appendConsole(line)
+        case "WATCHDOG":
+            let status = event["status"] as? String ?? ""
+            let name   = event["name"]   as? String ?? ""
+            appendConsole("🔄 Watchdog \(status): \(name)")
         default:
             break
         }
