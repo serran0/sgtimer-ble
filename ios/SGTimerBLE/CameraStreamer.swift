@@ -46,6 +46,9 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     func start() throws {
         try switchLens(to: .builtInWideAngleCamera)
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        // Remove before adding so a repeated start() call doesn't stack duplicate observers
+        NotificationCenter.default.removeObserver(self,
+            name: UIDevice.orientationDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(deviceOrientationChanged),

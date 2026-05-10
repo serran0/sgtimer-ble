@@ -23,6 +23,7 @@ class AppServer: ObservableObject {
     @Published var consoleLines: [String] = []
 
     // MARK: - Internal
+    private var hasStarted = false          // guards against double startServer() calls
     private let http = HttpServer()
     private var wsClients = [WebSocketSession]()
     private let wsLock = NSLock()
@@ -50,6 +51,12 @@ class AppServer: ObservableObject {
     // MARK: - Lifecycle
 
     func startServer(port: UInt16 = 8080) {
+        // SGTimerBLEApp.handleForeground() and ContentView.onAppear both call this;
+        // guard prevents the second call from reconfiguring the camera session while
+        // startRunning() is still in flight on its background queue (race → no frames).
+        guard !hasStarted else { return }
+        hasStarted = true
+
         try? camera.start()
         try? audio.start()
 
@@ -88,6 +95,7 @@ class AppServer: ObservableObject {
     }
 
     func stopServer() {
+        hasStarted = false
         camera.onFrame = nil
         audio.onFrame  = nil
         http.stop()
