@@ -20,15 +20,22 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     var onFrame: ((Data) -> Void)?
     var onRawSampleBuffer: ((CMSampleBuffer) -> Void)?
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
+    private(set) var activePreset: AVCaptureSession.Preset = .hd1280x720
 
     var currentOutputSize: CGSize {
+        let (lw, lh): (CGFloat, CGFloat)
+        switch activePreset {
+        case .hd4K3840x2160: (lw, lh) = (3840, 2160)
+        case .hd1920x1080:   (lw, lh) = (1920, 1080)
+        default:             (lw, lh) = (1280, 720)
+        }
         if let conn = videoOutput.connection(with: .video) {
             switch conn.videoOrientation {
-            case .portrait, .portraitUpsideDown: return CGSize(width: 720, height: 1280)
+            case .portrait, .portraitUpsideDown: return CGSize(width: lh, height: lw)
             default: break
             }
         }
-        return CGSize(width: 1280, height: 720)
+        return CGSize(width: lw, height: lh)
     }
 
     var captureSession_: AVCaptureSession { captureSession }
@@ -106,13 +113,21 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         captureSession.beginConfiguration()
         captureSession.inputs.forEach { captureSession.removeInput($0) }
 
-        if captureSession.sessionPreset != .hd1280x720 {
-            captureSession.sessionPreset = .hd1280x720
-        }
-
         if captureSession.canAddInput(newInput) {
             captureSession.addInput(newInput)
         }
+
+        // Pick the highest supported preset: 4K → 1080p → 720p
+        let preset: AVCaptureSession.Preset
+        if captureSession.canSetSessionPreset(.hd4K3840x2160) {
+            preset = .hd4K3840x2160
+        } else if captureSession.canSetSessionPreset(.hd1920x1080) {
+            preset = .hd1920x1080
+        } else {
+            preset = .hd1280x720
+        }
+        captureSession.sessionPreset = preset
+        activePreset = preset
 
         // Lock FPS to 30 — prevents auto-slowdown in low light
         try? device.lockForConfiguration()
@@ -166,7 +181,14 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
+        // Cap MJPEG stream at 1280px longest side — keeps web bandwidth reasonable at 4K capture
+        let extent = ciImage.extent
+        let maxDim: CGFloat = 1280
+        let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
+        let streamImage = streamScale < 1.0
+            ? ciImage.transformed(by: CGAffineTransform(scaleX: streamScale, y: streamScale))
+            : ciImage
+        guard let cgImage = ciContext.createCGImage(streamImage, from: streamImage.extent) else { return }
         let uiImage = UIImage(cgImage: cgImage)
         guard let jpegData = uiImage.jpegData(compressionQuality: 0.65) else { return }
 

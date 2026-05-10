@@ -51,12 +51,14 @@ class Recorder {
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
 
-        // Video — H.264
+        // Video — H.264, bitrate scaled to resolution
+        let longestEdge = max(videoSize.width, videoSize.height)
+        let videoBitrate = longestEdge >= 3840 ? 40_000_000 : longestEdge >= 1920 ? 16_000_000 : 8_000_000
         let vSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(videoSize.width),
             AVVideoHeightKey: Int(videoSize.height),
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 8_000_000]
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: videoBitrate]
         ]
         let vInput = AVAssetWriterInput(mediaType: .video, outputSettings: vSettings)
         vInput.expectsMediaDataInRealTime = true

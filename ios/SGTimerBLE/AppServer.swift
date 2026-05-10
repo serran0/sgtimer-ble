@@ -269,28 +269,33 @@ class AppServer: ObservableObject {
         let renderer = UIGraphicsImageRenderer(size: videoSize, format: fmt)
         let img = renderer.image { ctx in
             let g = ctx.cgContext
-            let pad: CGFloat = 20
             let W = videoSize.width
             let H = videoSize.height
+            // s scales all sizes proportionally so text appears the same visual
+            // weight regardless of resolution (2× the original 720p sizes at 720p,
+            // same proportion at 1080p / 4K).
+            let s: CGFloat = max(W, H) / 640
+            let pad: CGFloat = 10 * s
 
             func bg(_ rect: CGRect, alpha: CGFloat = 0.55) {
                 g.setFillColor(UIColor.black.withAlphaComponent(alpha).cgColor)
-                UIBezierPath(roundedRect: rect, cornerRadius: 8).fill()
+                UIBezierPath(roundedRect: rect, cornerRadius: 8 * s).fill()
             }
 
             // Status — top right
             let statusColor: UIColor = status == "LIVE"    ? .systemGreen
                                      : status == "STANDBY" ? .systemOrange : .systemRed
-            let sFont = UIFont.boldSystemFont(ofSize: 20)
+            let sFont = UIFont.boldSystemFont(ofSize: 20 * s)
             let sAttr: [NSAttributedString.Key: Any] = [.font: sFont, .foregroundColor: statusColor]
             let sSz   = (status as NSString).size(withAttributes: sAttr)
-            let sOrigin = CGPoint(x: W - sSz.width - pad - 12, y: pad + 4)
-            bg(CGRect(x: sOrigin.x - 10, y: sOrigin.y - 6, width: sSz.width + 20, height: sSz.height + 10))
+            let sOrigin = CGPoint(x: W - sSz.width - pad - 12 * s, y: pad + 4 * s)
+            bg(CGRect(x: sOrigin.x - 10 * s, y: sOrigin.y - 6 * s,
+                      width: sSz.width + 20 * s, height: sSz.height + 10 * s))
             (status as NSString).draw(at: sOrigin, withAttributes: sAttr)
 
             // Stats — top left (only when shots exist)
             if totalShots > 0 {
-                let mFont = UIFont.monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+                let mFont = UIFont.monospacedDigitSystemFont(ofSize: 17 * s, weight: .medium)
                 let mAttr: [NSAttributedString.Key: Any] = [.font: mFont, .foregroundColor: UIColor.white]
                 let lines = [
                     "First:  \(String(format: "%.2f", firstShot)) s",
@@ -298,9 +303,9 @@ class AppServer: ObservableObject {
                     "Total:  \(String(format: "%.2f", totalTime)) s",
                     "Shots:  \(totalShots)"
                 ]
-                let lh: CGFloat = 24
-                let bh = CGFloat(lines.count) * lh + 16
-                bg(CGRect(x: pad - 8, y: pad - 6, width: 200, height: bh))
+                let lh: CGFloat = 24 * s
+                let bh = CGFloat(lines.count) * lh + 8 * s
+                bg(CGRect(x: pad - 8 * s, y: pad - 6 * s, width: 200 * s, height: bh))
                 for (i, line) in lines.enumerated() {
                     (line as NSString).draw(at: CGPoint(x: pad, y: pad + CGFloat(i) * lh),
                                             withAttributes: mAttr)
@@ -309,13 +314,13 @@ class AppServer: ObservableObject {
 
             // Shot list — bottom right
             if !shots.isEmpty {
-                let shFont = UIFont.monospacedDigitSystemFont(ofSize: 20, weight: .semibold)
-                let lh: CGFloat = 28
-                let bw: CGFloat = 230
-                let bh = CGFloat(shots.count) * lh + 16
+                let shFont = UIFont.monospacedDigitSystemFont(ofSize: 20 * s, weight: .semibold)
+                let lh: CGFloat = 28 * s
+                let bw: CGFloat = 230 * s
+                let bh = CGFloat(shots.count) * lh + 8 * s
                 let bx = W - bw - pad
                 let by = H - bh - pad
-                bg(CGRect(x: bx - 8, y: by - 8, width: bw + 16, height: bh))
+                bg(CGRect(x: bx - 8 * s, y: by - 8 * s, width: bw + 16 * s, height: bh))
                 for (i, shot) in shots.reversed().enumerated() {
                     let label = "#\(shot.num) — \(String(format: "%.2f", shot.time)) s"
                     let attr: [NSAttributedString.Key: Any] = [.font: shFont, .foregroundColor: UIColor.white]
