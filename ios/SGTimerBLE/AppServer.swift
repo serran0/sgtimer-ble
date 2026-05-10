@@ -189,9 +189,9 @@ class AppServer: ObservableObject {
 
     private func jpegQuality(for quality: String) -> CGFloat {
         switch quality {
-        case "low":  return 0.4
-        case "high": return 0.85
-        default:     return 0.65  // normal
+        case "low":  return 0.25
+        case "high": return 0.65
+        default:     return 0.4   // normal
         }
     }
 
