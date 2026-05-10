@@ -384,8 +384,20 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", async () =
   }
 });
 
-document.getElementById("restartServerBtn")?.addEventListener("click", async () => {
-  if (!confirm("Restart the web server? All connected browsers will reload.")) return;
+document.getElementById("restartServerBtn")?.addEventListener("click", () => {
+  document.getElementById("restartModal").style.display = "flex";
+});
+
+document.getElementById("restartModal")?.addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.style.display = "none";
+});
+
+document.getElementById("restartModalCancelBtn")?.addEventListener("click", () => {
+  document.getElementById("restartModal").style.display = "none";
+});
+
+document.getElementById("restartModalConfirmBtn")?.addEventListener("click", async () => {
+  document.getElementById("restartModal").style.display = "none";
   try {
     await fetch("/restart_server", { method: "POST" });
     log("🔄 Server restarting...");

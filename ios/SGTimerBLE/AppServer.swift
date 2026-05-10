@@ -15,6 +15,11 @@ class AppServer: ObservableObject {
     @Published var avSyncDelayMs: Int = 300
     @Published var availableLenses: [LensOption] = []
     @Published var currentLensId: String = "wide"
+    @Published var titleText: String = "SG Timer"
+    @Published var connectedDeviceName: String? = nil
+    @Published var connectedDeviceAddress: String? = nil
+    @Published var isScanning: Bool = false
+    @Published var scannedDevices: [BLEDeviceInfo] = []
 
     // MARK: - Internal
     private let http = HttpServer()
@@ -31,7 +36,6 @@ class AppServer: ObservableObject {
 
     private var timerState = TimerState()
     private var lastTimerState: [String: Any]? = nil
-    private var title = "SG Timer"
 
     // MARK: - Init
 
@@ -123,6 +127,52 @@ class AppServer: ObservableObject {
         defaults.set(currentLensId, forKey: "currentLensId")
     }
 
+    // MARK: - Native UI actions (called from ContentView)
+
+    func scan() {
+        DispatchQueue.main.async { self.isScanning = true; self.scannedDevices = [] }
+        ble.scan(duration: 4.0) { [weak self] devices in
+            DispatchQueue.main.async { self?.scannedDevices = devices; self?.isScanning = false }
+        }
+    }
+
+    func connectDevice(_ device: BLEDeviceInfo) {
+        ble.connect(address: device.address, name: device.name)
+    }
+
+    func disconnectDevice() {
+        guard let addr = connectedDeviceAddress else { return }
+        ble.disconnect(address: addr)
+    }
+
+    func setTitle(_ t: String) {
+        let trimmed = t.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        titleText = trimmed
+        broadcast(["type": "TITLE_UPDATE", "title": trimmed])
+    }
+
+    func updateFPS(_ fps: Int) {
+        cameraFPS = Double(fps)
+        broadcast(settingsDict())
+    }
+
+    func updateSyncDelay(_ ms: Int) {
+        avSyncDelayMs = ms
+        broadcast(settingsDict())
+    }
+
+    func saveAndRestart() {
+        saveSettings()
+        broadcast(["type": "RELOAD"])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.stopServer()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.startServer()
+            }
+        }
+    }
+
     // MARK: - Lens switching
 
     func setLens(id: String) {
@@ -169,7 +219,7 @@ class AppServer: ObservableObject {
         }
 
         // Send current title
-        if let t = jsonString(["type": "TITLE_UPDATE", "title": title]) {
+        if let t = jsonString(["type": "TITLE_UPDATE", "title": titleText]) {
             session.writeText(t)
         }
 
@@ -203,6 +253,25 @@ class AppServer: ObservableObject {
 
     private func handleBLEEvent(_ event: [String: Any]) {
         guard let type = event["type"] as? String else { return }
+
+        // Update native iOS UI for connection events
+        switch type {
+        case "DEVICE_CONNECTED":
+            let name = event["name"] as? String ?? "Unknown"
+            let addr = event["addr"] as? String ?? ""
+            DispatchQueue.main.async {
+                self.connectedDeviceName = name
+                self.connectedDeviceAddress = addr
+                self.scannedDevices = []
+            }
+        case "DEVICE_DISCONNECTED":
+            DispatchQueue.main.async {
+                self.connectedDeviceName = nil
+                self.connectedDeviceAddress = nil
+            }
+        default:
+            break
+        }
 
         stateLock.lock()
         switch type {
@@ -363,7 +432,7 @@ class AppServer: ObservableObject {
         // ── GET /get_title ─────────────────────────────────────
         http.GET["/get_title"] = { [weak self] _ in
             guard let self else { return .internalServerError }
-            return self.json(["title": self.title])
+            return self.json(["title": self.titleText])
         }
 
         // ── POST /set_title ────────────────────────────────────
@@ -373,7 +442,7 @@ class AppServer: ObservableObject {
                   let t = body["title"] as? String, !t.isEmpty else {
                 return .badRequest(.text("Missing title"))
             }
-            self.title = t
+            DispatchQueue.main.async { self.titleText = t }
             self.broadcast(["type": "TITLE_UPDATE", "title": t])
             return self.json(["status": "ok", "title": t])
         }
@@ -413,7 +482,8 @@ class AppServer: ObservableObject {
         // ── POST /restart_server ───────────────────────────────
         http.POST["/restart_server"] = { [weak self] _ in
             guard let self else { return .internalServerError }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.broadcast(["type": "RELOAD"])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.stopServer()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     self.startServer()

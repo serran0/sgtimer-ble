@@ -25,53 +25,170 @@ struct AppWebView: UIViewRepresentable {
 
 struct ContentView: View {
     @EnvironmentObject var server: AppServer
-    @State private var adminURL: URL? = nil
     @State private var showPreview = false
+    @State private var titleDraft: String = ""
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(white: 0.08).ignoresSafeArea()
+        NavigationStack {
+            Form {
+                timerDeviceSection
+                streamTitleSection
+                cameraStreamSection
+                saveRestartSection
+            }
+            .navigationTitle("SG Timer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if server.isRunning {
+                        Text("http://\(server.localIP):8080")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Starting…")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if server.isRunning {
+                        Button {
+                            showPreview = true
+                        } label: {
+                            Label("Preview", systemImage: "play.rectangle")
+                        }
+                    }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showPreview) {
+            previewOverlay
+        }
+        .onAppear {
+            server.startServer()
+            titleDraft = server.titleText
+        }
+        .onChange(of: server.titleText) { newTitle in
+            titleDraft = newTitle
+        }
+    }
 
-            // ── Normal layout ──────────────────────────────────
-            VStack(spacing: 0) {
-                banner.zIndex(1)
+    // MARK: - Form sections
 
-                if let url = adminURL {
-                    AppWebView(url: url)
-                        .ignoresSafeArea(edges: .bottom)
-                } else {
-                    Spacer()
-                    VStack(spacing: 16) {
-                        ProgressView().tint(.white)
-                        Text(server.isRunning ? "Loading admin…" : "Starting server…")
-                            .foregroundColor(.gray)
-                            .font(.subheadline)
+    private var timerDeviceSection: some View {
+        Section("Timer Device") {
+            if server.isScanning {
+                HStack {
+                    ProgressView()
+                    Text("Scanning…").foregroundStyle(.secondary)
+                }
+            } else if let name = server.connectedDeviceName {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name).fontWeight(.medium)
+                        if let addr = server.connectedDeviceAddress {
+                            Text(addr).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
+                    Button("Disconnect", role: .destructive) {
+                        server.disconnectDevice()
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                if !server.scannedDevices.isEmpty {
+                    ForEach(server.scannedDevices, id: \.address) { device in
+                        Button {
+                            server.connectDevice(device)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(device.name).foregroundStyle(.primary)
+                                Text(device.address).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Divider()
+                }
+                Button("Scan for Devices") {
+                    server.scan()
+                }
+            }
+        }
+    }
+
+    private var streamTitleSection: some View {
+        Section("Stream Title") {
+            HStack {
+                TextField("Title", text: $titleDraft)
+                    .submitLabel(.done)
+                    .onSubmit { applyTitle() }
+                Button("Set") { applyTitle() }
+                    .buttonStyle(.borderless)
+                    .disabled(titleDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private var cameraStreamSection: some View {
+        Section("Camera & Stream") {
+            if server.availableLenses.count > 1 {
+                Picker("Lens", selection: Binding(
+                    get: { server.currentLensId },
+                    set: { server.setLens(id: $0) }
+                )) {
+                    ForEach(server.availableLenses) { lens in
+                        Text(lens.label).tag(lens.id)
+                    }
                 }
             }
 
-            // ── Preview overlay ────────────────────────────────
-            if showPreview {
-                previewOverlay
-                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                    .zIndex(99)
+            Picker("Frame Rate", selection: Binding(
+                get: { Int(server.cameraFPS) },
+                set: { server.updateFPS($0) }
+            )) {
+                Text("15 fps").tag(15)
+                Text("30 fps").tag(30)
+            }
+
+            Stepper(
+                "A/V Sync: \(server.avSyncDelayMs) ms",
+                value: Binding(
+                    get: { server.avSyncDelayMs },
+                    set: { server.updateSyncDelay($0) }
+                ),
+                in: 0...2000,
+                step: 10
+            )
+        }
+    }
+
+    private var saveRestartSection: some View {
+        Section {
+            Button(role: .destructive) {
+                server.saveAndRestart()
+            } label: {
+                HStack {
+                    Spacer()
+                    Text("Save & Restart Server")
+                    Spacer()
+                }
             }
         }
-        .preferredColorScheme(.dark)
-        .onAppear { server.startServer() }
-        .onChange(of: server.isRunning) { running in
-            if running, adminURL == nil {
-                adminURL = URL(string: "http://127.0.0.1:8080/admin.html?inapp=1")
-            }
-        }
+    }
+
+    // MARK: - Helpers
+
+    private func applyTitle() {
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        server.setTitle(trimmed)
     }
 
     // MARK: - Preview overlay
 
     private var previewOverlay: some View {
         ZStack(alignment: .bottom) {
-            // The exact same page remote clients see — camera bg + timer overlay
             AppWebView(url: URL(string: "http://127.0.0.1:8080/?preview=1")!, opaque: true)
                 .ignoresSafeArea()
 
@@ -80,7 +197,7 @@ struct ContentView: View {
                 HStack {
                     Spacer()
                     Button {
-                        withAnimation { showPreview = false }
+                        showPreview = false
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .bold))
@@ -117,48 +234,5 @@ struct ContentView: View {
                 .padding(.bottom, 32)
             }
         }
-    }
-
-    // MARK: - Banner
-
-    private var banner: some View {
-        HStack(spacing: 12) {
-            // IP address on the left
-            if server.isRunning {
-                Text("http://\(server.localIP):8080")
-                    .font(.caption.monospaced())
-                    .foregroundColor(.green)
-            } else {
-                Text("Starting…")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-            }
-
-            Spacer()
-
-            // Preview button on the right
-            if server.isRunning {
-                Button {
-                    withAnimation { showPreview = true }
-                } label: {
-                    Label("Preview", systemImage: "play.rectangle")
-                        .font(.caption.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.75))
-                        .clipShape(Capsule())
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(white: 0.12))
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Color.white.opacity(0.15)),
-            alignment: .bottom
-        )
     }
 }
