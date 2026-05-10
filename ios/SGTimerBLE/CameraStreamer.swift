@@ -19,8 +19,12 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     var onFrame: ((Data) -> Void)?
     var onRawSampleBuffer: ((CMSampleBuffer) -> Void)?
+    var onBitrateUpdate: ((Double) -> Void)?   // kbps
     var streamMaxDimension: CGFloat = 1280
     var streamJpegQuality: CGFloat = 0.65
+
+    private var bitrateAccBytes: Int = 0
+    private var bitrateWindowStart: Date = Date()
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
     private(set) var activePreset: AVCaptureSession.Preset = .hd1280x720
 
@@ -199,5 +203,14 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         frameLock.unlock()
 
         onFrame?(jpegData)
+
+        bitrateAccBytes += jpegData.count
+        let elapsed = Date().timeIntervalSince(bitrateWindowStart)
+        if elapsed >= 1.0 {
+            let kbps = Double(bitrateAccBytes * 8) / elapsed / 1000.0
+            bitrateAccBytes = 0
+            bitrateWindowStart = Date()
+            onBitrateUpdate?(kbps)
+        }
     }
 }

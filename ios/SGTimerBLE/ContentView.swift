@@ -232,7 +232,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer Server v0.71")
+                Text("SG Timer Server v0.72")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -251,6 +251,12 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
+    private var bitrateLabel: String {
+        let kbps = server.streamKbps
+        if kbps >= 1000 { return String(format: "%.1f Mbps", kbps / 1000) }
+        return String(format: "%.0f kbps", kbps)
+    }
+
     private func applyTitle() {
         let trimmed = titleDraft.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
@@ -264,10 +270,22 @@ struct ContentView: View {
             AppWebView(url: URL(string: "http://127.0.0.1:8080/?preview=1")!, opaque: true)
                 .ignoresSafeArea()
 
-            // Close button (top-right)
+            // Top bar: bitrate (left) + close button (right)
             VStack {
-                HStack {
+                HStack(alignment: .top) {
+                    // Bitrate chip
+                    Text(bitrateLabel)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.6))
+                        .clipShape(Capsule())
+                        .padding(.top, 60)
+                        .padding(.leading, 16)
+
                     Spacer()
+
                     Button {
                         showPreview = false
                     } label: {

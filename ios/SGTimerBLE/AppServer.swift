@@ -28,6 +28,7 @@ class AppServer: ObservableObject {
     @Published var isRecording: Bool = false
     @Published var streamResolution: String = "720p"
     @Published var streamQuality: String = "normal"
+    @Published var streamKbps: Double = 0
 
     // MARK: - Internal
     private var hasStarted = false          // guards against double startServer() calls
@@ -75,6 +76,10 @@ class AppServer: ObservableObject {
             self?.recorder.appendAudio(buf, time: time)
         }
         if let fmt = audio.captureFormat { recorder.configureAudio(from: fmt) }
+
+        camera.onBitrateUpdate = { [weak self] kbps in
+            DispatchQueue.main.async { self?.streamKbps = kbps }
+        }
 
         // Wire A/V callbacks for the /avstream WebSocket mux
         camera.onFrame = { [weak self] jpeg in
@@ -127,9 +132,13 @@ class AppServer: ObservableObject {
         }
         // New generation so browsers detect the restart and reload
         serverGeneration = Int(Date().timeIntervalSince1970)
+        if isColdStart {
+            // Hard restart: wipe timer state so clients show a clean slate
+            timerState = TimerState()
+            broadcast(["type": "SESSION_SYNC", "state": timerState.toDictionary()])
+        }
         broadcast(["type": "RELOAD"])
         // Only auto-reconnect on warm returns from background, not cold starts.
-        // On cold start the user must connect manually so stale state is not assumed.
         if !isColdStart,
            connectedDeviceName == nil,
            let addr = UserDefaults.standard.string(forKey: "lastDeviceAddr"),
