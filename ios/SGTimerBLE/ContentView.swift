@@ -19,6 +19,14 @@ struct AppWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ wv: WKWebView, context: Context) {}
+
+    // Without this, the WKWebView's WebContent XPC process keeps all TCP
+    // connections (MJPEG, WebSocket) open after SwiftUI removes the view.
+    // Calling stopLoading() signals the XPC process to close them immediately.
+    static func dismantleUIView(_ wv: WKWebView, coordinator: ()) {
+        wv.stopLoading()
+        wv.load(URLRequest(url: URL(string: "about:blank")!))
+    }
 }
 
 // MARK: - Main view
@@ -232,7 +240,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer Server v0.77")
+                Text("SG Timer Server v0.78")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
