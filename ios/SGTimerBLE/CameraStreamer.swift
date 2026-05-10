@@ -236,21 +236,20 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // Retain the pixel buffer so it's valid on the encode queue after this
-        // callback returns. Always matched by a release in the async block.
-        CVPixelBufferRetain(imageBuffer)
+        // CIImage creation is lazy (no rendering yet) and fast. It retains the
+        // pixel buffer internally via ARC, keeping it valid on the encode queue
+        // after this callback returns — no manual retain/release needed.
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         let quality = streamJpegQuality
         let maxDim = streamMaxDimension
 
         encodeQueue.async { [weak self] in
-            defer { CVPixelBufferRelease(imageBuffer) }
             guard let self else { return }
 
-            // ALL heavy work (CIImage → CGImage → JPEG) runs here, never on
+            // ALL heavy work (CGImage render → JPEG) runs here, never on
             // the capture queue. The capture queue stays instant so AVFoundation
             // delivers frames on time and alwaysDiscardsLateVideoFrames never
             // has to intervene with irregular drop patterns.
-            let ciImage = CIImage(cvPixelBuffer: imageBuffer)
             let extent = ciImage.extent
             let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
             let scaled = streamScale < 1.0
