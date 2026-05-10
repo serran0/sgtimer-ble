@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct SplashView: View {
+    @EnvironmentObject var server: AppServer
+    @Binding var isPresented: Bool
+
     private let phrases = ["Load and Make Ready", "Are you Ready?", "Standby"]
     @State private var phraseIndex = 0
     @State private var phraseOpacity: Double = 0
@@ -13,8 +16,6 @@ struct SplashView: View {
             VStack(spacing: 28) {
                 Spacer()
 
-                // Embossed title: dark gray text with light highlight above-left
-                // and dark shadow below-right gives a raised / stamped look
                 Text("SG TIMER SERVER")
                     .font(.system(size: 30, weight: .bold))
                     .tracking(3)
@@ -38,14 +39,23 @@ struct SplashView: View {
         .task { await cyclePhrases() }
     }
 
-    // Each phrase: 0.15s fade-in, ~0.7s hold, 0.15s fade-out ≈ 1s visible
+    // Cycles through all phrases (≈1 s each). Dismisses only after at least
+    // one full cycle AND the server is ready — whichever comes last.
     private func cyclePhrases() async {
+        var cyclesDone = 0
         while !Task.isCancelled {
-            withAnimation(.easeIn(duration: 0.15)) { phraseOpacity = 1 }
-            try? await Task.sleep(nanoseconds: 850_000_000)
+            withAnimation(.easeIn(duration: 0.15))  { phraseOpacity = 1 }
+            try? await Task.sleep(nanoseconds: 850_000_000)   // hold ~0.85 s
             withAnimation(.easeOut(duration: 0.15)) { phraseOpacity = 0 }
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)   // gap before next
+
             phraseIndex = (phraseIndex + 1) % phrases.count
+            if phraseIndex == 0 { cyclesDone += 1 }
+
+            if cyclesDone >= 1 && server.isRunning {
+                isPresented = false
+                return
+            }
         }
     }
 }

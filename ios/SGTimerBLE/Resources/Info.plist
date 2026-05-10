@@ -53,9 +53,9 @@
         <dict/>
     </dict>
 
-    <!-- Blank launch screen -->
-    <key>UILaunchScreen</key>
-    <dict/>
+    <!-- Launch screen storyboard — shown by iOS before the app process starts -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
 
     <!-- BLE required capability -->
     <key>UIRequiredDeviceCapabilities</key>

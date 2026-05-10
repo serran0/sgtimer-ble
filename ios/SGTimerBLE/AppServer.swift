@@ -118,7 +118,7 @@ class AppServer: ObservableObject {
         DispatchQueue.main.async { self.isRunning = false }
     }
 
-    func handleForeground() {
+    func handleForeground(isColdStart: Bool = false) {
         guard isRunning else {
             startServer()
             return
@@ -126,8 +126,10 @@ class AppServer: ObservableObject {
         // New generation so browsers detect the restart and reload
         serverGeneration = Int(Date().timeIntervalSince1970)
         broadcast(["type": "RELOAD"])
-        // Reconnect to last known device if not currently connected
-        if connectedDeviceName == nil,
+        // Only auto-reconnect on warm returns from background, not cold starts.
+        // On cold start the user must connect manually so stale state is not assumed.
+        if !isColdStart,
+           connectedDeviceName == nil,
            let addr = UserDefaults.standard.string(forKey: "lastDeviceAddr"),
            let name = UserDefaults.standard.string(forKey: "lastDeviceName") {
             ble.connect(address: addr, name: name)
