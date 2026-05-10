@@ -166,6 +166,16 @@ struct ContentView: View {
                 }
             }
 
+            Picker("Stream Resolution", selection: Binding(
+                get: { server.streamResolution },
+                set: { server.updateStreamResolution($0) }
+            )) {
+                Text("720p").tag("720p")
+                Text("1080p").tag("1080p")
+                Text("1440p").tag("1440p")
+                Text("4K").tag("4k")
+            }
+
             Picker("Frame Rate", selection: Binding(
                 get: { Int(server.cameraFPS) },
                 set: { server.updateFPS($0) }
@@ -213,7 +223,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer Server v0.58")
+                Text("SG Timer Server v0.69")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

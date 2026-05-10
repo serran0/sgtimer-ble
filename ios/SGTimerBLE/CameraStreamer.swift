@@ -19,6 +19,7 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     var onFrame: ((Data) -> Void)?
     var onRawSampleBuffer: ((CMSampleBuffer) -> Void)?
+    var streamMaxDimension: CGFloat = 1280
     private(set) var currentDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
     private(set) var activePreset: AVCaptureSession.Preset = .hd1280x720
 
@@ -181,9 +182,9 @@ class CameraStreamer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        // Cap MJPEG stream at 1280px longest side — keeps web bandwidth reasonable at 4K capture
+        // Cap MJPEG stream at configured max dimension
         let extent = ciImage.extent
-        let maxDim: CGFloat = 1280
+        let maxDim: CGFloat = streamMaxDimension
         let streamScale = min(1.0, maxDim / max(extent.width, extent.height))
         let streamImage = streamScale < 1.0
             ? ciImage.transformed(by: CGAffineTransform(scaleX: streamScale, y: streamScale))
