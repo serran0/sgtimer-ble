@@ -7,8 +7,16 @@ struct SGTimerBLEApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(server)
+            ZStack {
+                ContentView()
+                    .environmentObject(server)
+                if !server.isRunning {
+                    SplashView()
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+            }
+            .animation(.easeOut(duration: 0.4), value: server.isRunning)
         }
         .onChange(of: scenePhase) { phase in
             switch phase {

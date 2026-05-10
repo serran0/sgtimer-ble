@@ -244,9 +244,9 @@ function handleMessage(msg) {
         if (s.shots) {
           shots = s.shots;
           totalShots = shots.length;
-          totalTime = s.totalTime || 0;
-          firstShotTime = s.firstShot || 0;
-          bestSplit = s.bestSplit || 0;
+          totalTime = s.total_time || 0;
+          firstShotTime = s.first_shot || 0;
+          bestSplit = s.best_split || 0;
           updateStatsDisplay();
           restoreShotList();
         }

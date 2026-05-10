@@ -37,7 +37,7 @@ struct ContentView: View {
                 cameraStreamSection
                 saveSettingsSection
             }
-            .navigationTitle("SG Timer")
+            .navigationTitle("SG Timer Server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -213,7 +213,7 @@ struct ContentView: View {
                     Text("Admin: http://\(server.localIP):8080/admin.html")
                         .font(.caption)
                 }
-                Text("SG Timer v0.50")
+                Text("SG Timer Server v0.58")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
