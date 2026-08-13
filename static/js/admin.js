@@ -1,3 +1,7 @@
+// Bump on every UI change. Logged at startup so a stale cached script is
+// obvious at a glance instead of looking like a dead button.
+const UI_BUILD = "1.1.1";
+
 // ───────────── UI Elements ─────────────
 const scanBtn = document.getElementById("scanBtn");
 const connectBtn = document.getElementById("connectBtn");
@@ -11,6 +15,7 @@ const titleInput = document.getElementById("titleInput");
 const setTitleBtn = document.getElementById("setTitleBtn");
 const pairBtn = document.getElementById("pairBtn");
 const unpairBtn = document.getElementById("unpairBtn");
+const deviceHint = document.getElementById("deviceHint");
 const pairingOverlay = document.getElementById("pairingOverlay");
 const pairingDevice = document.getElementById("pairingDevice");
 const pairingHint = document.getElementById("pairingHint");
@@ -330,13 +335,16 @@ async function answerPairing(accept) {
   }
 }
 
-// Pair/Forget need a device; without one the buttons stay disabled so a
-// click can never look like it silently did nothing.
+// Pair/Forget need a device selected. The buttons deliberately stay
+// clickable without one: a disabled button fires no event at all, which
+// looks exactly like a broken button. Instead every click answers, and a
+// hint next to the dropdown always states what the app thinks is selected.
 function updateDeviceButtons() {
-  const hasDevice = Boolean(deviceSelect.value || localStorage.getItem("lastDeviceAddr"));
-  pairBtn.disabled = !hasDevice;
-  unpairBtn.disabled = !hasDevice;
-  connectBtn.disabled = !hasDevice;
+  const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
+  deviceHint.textContent = addr
+    ? `Selected: ${addr}`
+    : "No timer selected — press 🔍 Scan";
+  deviceHint.classList.toggle("warn", !addr);
 }
 
 async function pairDevice() {
@@ -365,7 +373,7 @@ async function pairDevice() {
 async function unpairDevice() {
   const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
   if (!addr) {
-    log("⚠️ No device selected to forget.");
+    log("⚠️ No device selected — press 🔍 Scan and pick your timer first.");
     return;
   }
   try {
@@ -440,6 +448,7 @@ async function loadSessions(append = false) {
 
 deviceSelect.addEventListener("change", updateDeviceButtons);
 updateDeviceButtons();
+log(`🧭 Admin UI build ${UI_BUILD}`);
 
 // ───────────── Expand/Collapse Session Details ─────────────
 async function toggleSessionDetails(card, sessId) {

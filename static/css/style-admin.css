@@ -28,13 +28,13 @@ body {
   box-shadow: 0 0 12px rgba(255, 102, 0, 0.6);
 }
 
-.btn:disabled,
-.btn:disabled:hover {
-  background: linear-gradient(135deg, #444, #222);
-  color: #888;
-  box-shadow: none;
-  cursor: not-allowed;
+/* ───────────── Device Hint ───────────── */
+.device-hint {
+  margin-left: 10px;
+  font-size: 13px;
+  color: #999;
 }
+.device-hint.warn { color: #FFA733; }
 
 /* ───────────── Pairing Dialog ───────────── */
 .pairing-overlay {
