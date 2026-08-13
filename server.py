@@ -221,6 +221,32 @@ async def clear_sessions():
 devices: Dict[str, "DeviceManager"] = {}
 scan_lock = asyncio.Lock()
 
+# BLEDevice objects kept from the last scan, keyed by address.
+#
+# Connecting by address string makes bleak wait for an advertisement before
+# it will even try, and a BLE peripheral stops advertising while it is in a
+# connection — so once the timer is holding the link (as it does right after
+# pairing) that path can never succeed, no matter how often it is retried.
+# A BLEDevice carries the address bleak actually needs, letting it connect
+# to a timer that is not advertising instead of demanding a power cycle.
+discovered: Dict[str, object] = {}
+
+
+def _explain_connect_failure(err: Exception, had_ble_device: bool) -> str:
+    """Add the missing context to bleak's 'device was not found'.
+
+    That error means no advertisement arrived, which usually means the timer
+    is already in a connection rather than switched off.
+    """
+    text = str(err)
+    if "was not found" in text.lower() and not had_ble_device:
+        return (
+            f"{text} — the timer is not advertising. It stops advertising "
+            "while connected to something else, so disconnect it there (or "
+            "power-cycle it), then press Scan before connecting."
+        )
+    return text
+
 
 def be_u16(b, o): return (b[o] << 8) | b[o + 1]
 def be_u32(b, o): return (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]
@@ -243,6 +269,7 @@ class DeviceManager:
         self.model = self._get_model()
         self.paired: Optional[bool] = None
         self.last_error: Optional[str] = None
+        self.ble_device = None
         self._pairing_hint_sent = False
 
     def _get_model(self):
@@ -290,9 +317,29 @@ class DeviceManager:
         })
         return result
 
+    async def _resolve_target(self):
+        """Return the best handle to connect with: a BLEDevice if we have one.
+
+        Falls back to the bare address, which only works while the timer is
+        advertising — so scan once first if this device was never seen in
+        this session.
+        """
+        if self.ble_device is None:
+            self.ble_device = discovered.get(self.addr)
+        if self.ble_device is None:
+            try:
+                async with scan_lock:
+                    for d in await BleakScanner.discover(timeout=4.0):
+                        if d.address:
+                            discovered[d.address] = d
+                self.ble_device = discovered.get(self.addr)
+            except Exception as e:
+                print(f"⚠️ Could not scan before connecting: {e}")
+        return self.ble_device or self.addr
+
     async def _open_link(self):
         """Bring up the GATT link: connect, read API version, subscribe."""
-        self.client = BleakClient(self.addr)
+        self.client = BleakClient(self.ble_device or self.addr)
         await self.client.connect()
         self.connected = True
 
@@ -365,6 +412,10 @@ class DeviceManager:
             if self.client and self.client.is_connected:
                 return True
 
+            # Resolve once, before any pairing: the timer is most likely to be
+            # advertising now, and after pairing it may go quiet.
+            await self._resolve_target()
+
             paired_now = False
             if allow_pairing:
                 self.paired = await pairing_mgr.is_paired(self.addr)
@@ -407,8 +458,8 @@ class DeviceManager:
 
         except Exception as e:
             self.connected = False
-            self.last_error = str(e)
-            await broadcast({"type": "ERROR", "message": f"connect failed: {e}"})
+            self.last_error = _explain_connect_failure(e, bool(self.ble_device))
+            await broadcast({"type": "ERROR", "message": f"connect failed: {self.last_error}"})
             return False
 
     async def disconnect(self):
@@ -585,6 +636,9 @@ async def list_devices():
     results = []
     for d in devs:
         if d.name and d.name.startswith(NAME_PREFIX):
+            # Keep the BLEDevice: it lets us reconnect later even once the
+            # timer has stopped advertising.
+            discovered[d.address] = d
             code = d.name[7].upper() if len(d.name) > 7 else "?"
             model = "SG Timer Sport" if code == "A" else "SG Timer GO" if code == "B" else "Unknown Model"
             # Bond state is reported from what we already know rather than
