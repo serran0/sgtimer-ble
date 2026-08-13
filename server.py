@@ -81,6 +81,11 @@ EVENT_UUID = "75200001-14d2-4cda-8b6b-697c554c9311"
 API_VERSION_UUID = "7520fffe-14d2-4cda-8b6b-697c554c9311"  # ✅ Corrected UUID
 NAME_PREFIX = "SG-SST"
 
+# Attempts allowed when opening the GATT link right after pairing, while the
+# stack releases the link the pairing ceremony used.
+CONNECT_ATTEMPTS = 4
+CONNECT_RETRY_DELAY = 2.0
+
 EVENT_TYPES = {
     0x00: "SESSION_STARTED",
     0x01: "SESSION_SUSPENDED",
@@ -310,6 +315,36 @@ class DeviceManager:
 
         await self.client.start_notify(EVENT_UUID, self.handle_event)
 
+    async def _open_link_with_retries(self, attempts: int = CONNECT_ATTEMPTS):
+        """Open the GATT link, retrying while the Bluetooth stack settles.
+
+        Straight after pairing, Windows may still be holding the link the
+        ceremony used, and the timer accepts only one client — so the first
+        attempt can be refused through no fault of ours.
+        """
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                await self._open_link()
+                return
+            except Exception as e:
+                last_error = e
+                await self._drop_link()
+                if attempt == attempts:
+                    break
+                delay = CONNECT_RETRY_DELAY * attempt
+                print(f"⏳ Connect attempt {attempt}/{attempts} failed ({e}) — retrying in {delay:.0f}s")
+                await broadcast({
+                    "type": "CONNECT_RETRY",
+                    "addr": self.addr,
+                    "name": self.name,
+                    "attempt": attempt,
+                    "attempts": attempts,
+                    "message": str(e),
+                })
+                await asyncio.sleep(delay)
+        raise last_error
+
     async def _drop_link(self):
         """Tear down a half-open link before retrying."""
         try:
@@ -330,21 +365,29 @@ class DeviceManager:
             if self.client and self.client.is_connected:
                 return True
 
+            paired_now = False
             if allow_pairing:
                 self.paired = await pairing_mgr.is_paired(self.addr)
                 if self.paired is False:
                     print(f"🔐 No bond for {self.name} ({self.addr}) — pairing first")
                     await self.pair()
+                    paired_now = True
 
             try:
-                await self._open_link()
+                # A freshly paired timer needs a few seconds before it will
+                # accept a client again; an already bonded one should answer
+                # straight away, so only retry when we just paired.
+                await self._open_link_with_retries(
+                    CONNECT_ATTEMPTS if paired_now else 1
+                )
             except Exception as e:
-                if not (allow_pairing and pairing_required(e)):
+                # Pairing once more cannot help if we just did it.
+                if paired_now or not (allow_pairing and pairing_required(e)):
                     raise
                 print(f"🔐 Timer requires pairing: {e}")
                 await self._drop_link()
                 await self.pair()
-                await self._open_link()
+                await self._open_link_with_retries()
 
             print(f"✅ Connected to {self.name} ({self.addr}) [{self.model}] API v{self.api_version}")
 
@@ -544,12 +587,15 @@ async def list_devices():
         if d.name and d.name.startswith(NAME_PREFIX):
             code = d.name[7].upper() if len(d.name) > 7 else "?"
             model = "SG Timer Sport" if code == "A" else "SG Timer GO" if code == "B" else "Unknown Model"
+            # Bond state is reported from what we already know rather than
+            # queried here: asking the stack means opening a device object
+            # per hit, and a scan must never hold a link to the timer.
+            dm = devices.get(d.address)
             results.append({
                 "name": d.name,
                 "address": d.address,
                 "model": model,
-                # None when the platform cannot report bond state
-                "paired": await pairing_mgr.is_paired(d.address),
+                "paired": dm.paired if dm else None,
             })
     return {"devices": results}
 

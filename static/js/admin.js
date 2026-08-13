@@ -122,6 +122,13 @@ ws.onmessage = (e) => {
       log(`🔐 ${msg.message}`);
       break;
 
+    case "CONNECT_RETRY":
+      log(
+        `⏳ Connect attempt ${msg.attempt}/${msg.attempts} failed — retrying ` +
+          `(the timer is released a few seconds after pairing)`
+      );
+      break;
+
     case "UNPAIRED":
       log(`🔓 Forgot pairing for ${msg.name || msg.addr}`);
       break;

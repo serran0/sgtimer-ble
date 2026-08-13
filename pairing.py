@@ -25,6 +25,11 @@ from typing import Dict, Optional, Tuple
 # 60 s after it is enabled, so there is no point waiting longer than that.
 PAIRING_TIMEOUT = 60.0
 
+# Windows keeps the LE link the pairing ceremony used open after PairAsync
+# returns. The timer serves a single client, so that leftover link is enough
+# to make the next connect fail; wait for the stack to drop it.
+RELEASE_SETTLE = 3.0
+
 IS_WINDOWS = sys.platform == "win32"
 
 # WinRT is imported the same way bleak does it, so PyInstaller picks up the
@@ -208,6 +213,25 @@ class PairingManager:
             except Exception:
                 pass
 
+    async def _release_link(self, addr: str, settle: float = RELEASE_SETTLE) -> None:
+        """Drop the connection the pairing ceremony leaves behind.
+
+        Windows stays connected to the timer once pairing completes, and the
+        timer only serves one client at a time — so without this the next
+        connect is refused until the timer is power-cycled. Disposing every
+        BluetoothLEDevice reference is what makes the stack let go.
+        """
+        try:
+            device = await BluetoothLEDevice.from_bluetooth_address_async(
+                _address_to_int(addr)
+            )
+            if device is not None:
+                device.close()
+        except Exception as e:
+            print(f"⚠️ Could not release the link after pairing: {e}")
+        if settle:
+            await asyncio.sleep(settle)
+
     async def _pair_winrt(self, addr: str, name: str) -> dict:
         info = await self._device_information(addr)
         pairing = info.pairing
@@ -263,6 +287,10 @@ class PairingManager:
         )
         if not paired:
             raise PairingError(_explain_failure(status))
+
+        # Hand the timer back before anyone tries to open a GATT link to it.
+        await self._release_link(addr)
+
         return {
             "status": "paired",
             "paired": True,

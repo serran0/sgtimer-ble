@@ -23,6 +23,11 @@ Once bonded, the timer reconnects on its own; the watchdog never re-prompts
 mid-stage. Use **Forget** if the timer was reset or has forgotten this PC —
 that clears the stale bond so you can pair again from scratch.
 
+Windows keeps the Bluetooth link open for a few seconds after pairing
+finishes, and the timer only serves one client at a time — so the server
+releases that link and retries the first connection a few times rather than
+failing. Expect the connect right after pairing to take a few seconds.
+
 ### Endpoints
 
 | Endpoint | Purpose |
