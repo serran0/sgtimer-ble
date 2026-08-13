@@ -9,10 +9,22 @@ const loadMoreBtn = document.getElementById("loadMoreBtn");
 const refreshBtn = document.getElementById("refreshSessionsBtn");
 const titleInput = document.getElementById("titleInput");
 const setTitleBtn = document.getElementById("setTitleBtn");
+const pairBtn = document.getElementById("pairBtn");
+const unpairBtn = document.getElementById("unpairBtn");
+const pairingOverlay = document.getElementById("pairingOverlay");
+const pairingDevice = document.getElementById("pairingDevice");
+const pairingHint = document.getElementById("pairingHint");
+const pairingCode = document.getElementById("pairingCode");
+const pairingPin = document.getElementById("pairingPin");
+const pairingCountdown = document.getElementById("pairingCountdown");
+const pairingAcceptBtn = document.getElementById("pairingAcceptBtn");
+const pairingRejectBtn = document.getElementById("pairingRejectBtn");
 
 let offset = 0;
 const PAGE_SIZE = 20;
 let currentConnectedDevice = null;
+let pendingPairing = null;
+let pairingTicker = null;
 
 // ───────────── Logging Helper ─────────────
 function log(msg) {
@@ -81,6 +93,38 @@ ws.onmessage = (e) => {
       break;
     }
 
+    case "PAIRING_STARTED":
+      log(`🔐 Pairing with ${msg.name || msg.addr} — confirm on the timer too.`);
+      break;
+
+    case "PAIRING_REQUEST":
+      showPairingPrompt(msg);
+      break;
+
+    case "PAIRING_RESULT":
+      hidePairingPrompt();
+      if (msg.ok)
+        log(`✅ Paired with ${msg.name || msg.addr} (${msg.status})`);
+      else log(`❌ Pairing failed: ${msg.message}`);
+      break;
+
+    case "PAIRING_CANCELLED":
+      hidePairingPrompt();
+      log(`⚠️ Pairing cancelled: ${msg.reason}`);
+      break;
+
+    case "PAIRING_REQUIRED":
+      log(`🔐 ${msg.message}`);
+      break;
+
+    case "UNPAIRED":
+      log(`🔓 Forgot pairing for ${msg.name || msg.addr}`);
+      break;
+
+    case "ERROR":
+      log(`❌ ${msg.message}`);
+      break;
+
     case "SESSION_STARTED":
       log(`🏁 Session started (${msg.sess_id || "no id"})`);
       break;
@@ -131,7 +175,9 @@ async function scanDevices() {
   data.devices.forEach((d) => {
     const opt = document.createElement("option");
     opt.value = d.address;
-    opt.textContent = `${d.name || "Unknown"} (${d.address})`;
+    // paired is null when the platform cannot report bond state
+    const pairState = d.paired === false ? " 🔐 not paired" : "";
+    opt.textContent = `${d.name || "Unknown"} (${d.address})${pairState}`;
     opt.dataset.name = d.name || "";
     deviceSelect.appendChild(opt);
   });
@@ -170,11 +216,18 @@ async function connectDevice() {
   log(`Connecting to ${addr}...`);
   localStorage.setItem("lastDeviceAddr", addr);
 
-  await fetch("/connect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address: addr, name }),
-  });
+  try {
+    const res = await fetch("/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: addr, name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.status === "failed")
+      log(`❌ Connect failed: ${data.error || "unknown error"}`);
+  } catch (e) {
+    log("❌ Error connecting: " + e.message);
+  }
 }
 
 async function disconnectDevice() {
@@ -197,6 +250,130 @@ async function disconnectDevice() {
   currentConnectedDevice = null;
   localStorage.removeItem("lastDeviceAddr");
 }
+
+// ───────────── Pairing ─────────────
+// The timer asks for the same confirmation on its own screen; this dialog is
+// the client half of that ceremony.
+const PAIRING_HINTS = {
+  confirm_pin_match: "Check that the code below matches the one on the timer, then confirm on both.",
+  display_pin: "Enter the code below on the timer to finish pairing.",
+  provide_pin: "Type the code shown on the timer.",
+  confirm_only: "Confirm the pairing request here and on the timer.",
+};
+
+function showPairingPrompt(msg) {
+  pendingPairing = msg;
+
+  pairingDevice.textContent = `${msg.name || "Timer"} (${msg.addr})`;
+  pairingHint.textContent =
+    PAIRING_HINTS[msg.kind] || "Confirm the pairing request on the timer.";
+
+  const needsPin = msg.kind === "provide_pin";
+  pairingCode.hidden = !msg.pin;
+  pairingCode.textContent = msg.pin || "";
+  pairingPin.hidden = !needsPin;
+  pairingPin.value = "";
+
+  pairingOverlay.hidden = false;
+  (needsPin ? pairingPin : pairingAcceptBtn).focus();
+
+  log(
+    `🔐 Pairing confirmation requested for ${msg.name || msg.addr}` +
+      (msg.pin ? ` — code ${msg.pin}` : "")
+  );
+
+  // Mirror the timer's own 60 s pairing window.
+  let left = Math.round(msg.timeout || 60);
+  const tick = () => {
+    pairingCountdown.textContent = left > 0 ? `Expires in ${left}s` : "Expired";
+    if (left-- <= 0) clearInterval(pairingTicker);
+  };
+  clearInterval(pairingTicker);
+  tick();
+  pairingTicker = setInterval(tick, 1000);
+}
+
+function hidePairingPrompt() {
+  pendingPairing = null;
+  clearInterval(pairingTicker);
+  pairingTicker = null;
+  pairingOverlay.hidden = true;
+  pairingCountdown.textContent = "";
+}
+
+async function answerPairing(accept) {
+  if (!pendingPairing) return;
+  const body = { address: pendingPairing.addr, accept };
+  if (accept && pendingPairing.kind === "provide_pin") {
+    const pin = pairingPin.value.trim();
+    if (!pin) {
+      log("⚠️ Enter the code shown on the timer first.");
+      return;
+    }
+    body.pin = pin;
+  }
+
+  hidePairingPrompt();
+  try {
+    const res = await fetch("/pair/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) log(`⚠️ Could not send confirmation: HTTP ${res.status}`);
+    else log(accept ? "✅ Pairing confirmed — waiting for the timer..." : "✖ Pairing rejected.");
+  } catch (e) {
+    log("❌ Error confirming pairing: " + e.message);
+  }
+}
+
+async function pairDevice() {
+  const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
+  if (!addr) {
+    log("⚠️ No device selected to pair.");
+    return;
+  }
+  const selected = deviceSelect.options[deviceSelect.selectedIndex];
+  log("🔐 Enable pairing mode on the timer (Settings → Bluetooth → Pairing mode), then confirm here.");
+
+  try {
+    const res = await fetch("/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: addr, name: selected ? selected.dataset.name : null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) log(`❌ Pairing failed: ${data.detail || `HTTP ${res.status}`}`);
+    else if (data.status === "already_paired") log("ℹ️ This timer is already paired.");
+  } catch (e) {
+    log("❌ Error pairing: " + e.message);
+  }
+}
+
+async function unpairDevice() {
+  const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
+  if (!addr) {
+    log("⚠️ No device selected to forget.");
+    return;
+  }
+  try {
+    const res = await fetch("/unpair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: addr }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) log(`❌ Could not forget device: ${data.detail || `HTTP ${res.status}`}`);
+  } catch (e) {
+    log("❌ Error forgetting device: " + e.message);
+  }
+}
+
+pairingAcceptBtn.addEventListener("click", () => answerPairing(true));
+pairingRejectBtn.addEventListener("click", () => answerPairing(false));
+pairingPin.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") answerPairing(true);
+});
 
 // ───────────── Session Listing ─────────────
 async function loadSessions(append = false) {
@@ -332,6 +509,8 @@ fetch("/get_title")
 fetch("/status")
   .then((r) => r.json())
   .then((data) => {
+    // a ceremony may have been raised before this page was opened
+    if (data.pending_pairing) showPairingPrompt(data.pending_pairing);
     if (data.connected && data.devices.length > 0) {
       const d = data.devices.find((x) => x.connected);
       currentConnectedDevice = d.address;
@@ -369,6 +548,8 @@ if (lastAddr) {
 scanBtn.addEventListener("click", scanDevices);
 connectBtn.addEventListener("click", connectDevice);
 disconnectBtn.addEventListener("click", disconnectDevice);
+pairBtn.addEventListener("click", pairDevice);
+unpairBtn.addEventListener("click", unpairDevice);
 refreshBtn.addEventListener("click", () => {
   offset = 0;
   loadSessions(false);

@@ -17,6 +17,25 @@
     <select id="deviceSelect"></select>
     <button id="connectBtn" class="btn">🔗 Connect</button>
     <button id="disconnectBtn" class="btn btn-secondary">⛔ Disconnect</button>
+    <button id="pairBtn" class="btn">🔐 Pair</button>
+    <button id="unpairBtn" class="btn btn-secondary">🔓 Forget</button>
+  </div>
+
+  <!-- Pairing confirmation: mirrors the confirmation shown on the timer -->
+  <div id="pairingOverlay" class="pairing-overlay" hidden>
+    <div class="pairing-dialog" role="dialog" aria-modal="true" aria-labelledby="pairingTitle">
+      <h2 id="pairingTitle">Confirm pairing</h2>
+      <p id="pairingDevice" class="pairing-device"></p>
+      <p id="pairingHint" class="pairing-hint"></p>
+      <div id="pairingCode" class="pairing-code" hidden></div>
+      <input id="pairingPin" class="pairing-pin" type="text" inputmode="numeric"
+             placeholder="Enter the code shown on the timer" hidden>
+      <p id="pairingCountdown" class="pairing-countdown"></p>
+      <div class="pairing-actions">
+        <button id="pairingAcceptBtn" class="btn">✅ Confirm</button>
+        <button id="pairingRejectBtn" class="btn btn-secondary">✖ Reject</button>
+      </div>
+    </div>
   </div>
 
   

@@ -28,6 +28,84 @@ body {
   box-shadow: 0 0 12px rgba(255, 102, 0, 0.6);
 }
 
+/* ───────────── Pairing Dialog ───────────── */
+.pairing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.pairing-overlay[hidden] { display: none; }
+
+.pairing-dialog {
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 165, 0, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 0 24px rgba(255, 120, 0, 0.35);
+  padding: 24px 28px;
+  max-width: 440px;
+  width: calc(100% - 40px);
+  text-align: center;
+  animation: expandCard 0.25s ease;
+}
+.pairing-dialog h2 { margin-top: 0; }
+
+.pairing-device {
+  font-weight: bold;
+  color: #fff;
+  margin: 0 0 6px 0;
+}
+.pairing-hint {
+  color: #ccc;
+  font-size: 14px;
+  margin: 0 0 14px 0;
+}
+.pairing-code {
+  font-family: "Fira Code", "Courier New", monospace;
+  font-size: 34px;
+  font-weight: bold;
+  letter-spacing: 6px;
+  color: #FFA733;
+  background: #121212;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+  text-shadow: 0 0 10px rgba(255, 165, 0, 0.35);
+}
+.pairing-code[hidden] { display: none; }
+
+.pairing-pin {
+  background: #121212;
+  color: #fff6e8;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 20px;
+  letter-spacing: 4px;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 14px;
+  outline: none;
+}
+.pairing-pin[hidden] { display: none; }
+.pairing-pin:focus { border-color: #FFA733; }
+
+.pairing-countdown {
+  color: #aaa;
+  font-size: 13px;
+  margin: 0 0 14px 0;
+}
+.pairing-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
 /* ───────────── Title Section ───────────── */
 #titleSection {
   margin-top: 30px;

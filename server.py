@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 import configparser
 import asyncio
@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from bleak import BleakScanner, BleakClient
 from sessions_api import router as sessions_router
+from pairing import PairingManager, PairingError, pairing_required
 
 # ─────────────────────────────────────────────
 # Cross-platform path setup (supports PyInstaller)
@@ -123,6 +124,12 @@ class WsHub:
         elif last_session_state:
             await ws.send_json({"type": "SESSION_SYNC", "state": last_session_state})
 
+        # a pairing confirmation may already be waiting — replay it so a
+        # freshly opened admin page can still answer it
+        req = pairing_mgr.pending()
+        if req:
+            await ws.send_json({"type": "PAIRING_REQUEST", **req})
+
     def disconnect(self, ws: WebSocket):
         self.clients.discard(ws)
 
@@ -152,6 +159,11 @@ async def ws_endpoint(ws: WebSocket):
 
 async def broadcast(msg: dict):
     await hub.broadcast(msg)
+
+
+# Handles the Bluetooth pairing ceremony the timer requires from API 3.2 on,
+# forwarding the confirmation code to the admin UI.
+pairing_mgr = PairingManager(broadcast)
 
 # ─────────────────────────────────────────────
 # Session State Retention
@@ -224,6 +236,9 @@ class DeviceManager:
         self.last_shot_time = None
         self.api_version = "?"
         self.model = self._get_model()
+        self.paired: Optional[bool] = None
+        self.last_error: Optional[str] = None
+        self._pairing_hint_sent = False
 
     def _get_model(self):
         """Extract model type from BLE name pattern."""
@@ -236,28 +251,100 @@ class DeviceManager:
             return "SG Timer GO"
         return "Unknown Model"
 
-    async def connect(self):
-        """Connect to BLE device and subscribe for events."""
+    async def pair(self) -> dict:
+        """Run the pairing ceremony, asking the operator to confirm the code."""
+        await broadcast({
+            "type": "PAIRING_STARTED",
+            "addr": self.addr,
+            "name": self.name,
+            "model": self.model,
+        })
+        try:
+            result = await pairing_mgr.pair(self.addr, self.name, client=self.client)
+        except PairingError as e:
+            self.paired = False
+            await broadcast({
+                "type": "PAIRING_RESULT",
+                "ok": False,
+                "addr": self.addr,
+                "name": self.name,
+                "message": str(e),
+            })
+            raise
+
+        self.paired = result.get("paired")
+        self._pairing_hint_sent = False
+        print(f"🔐 Pairing {result['status']}: {self.name} ({self.addr})")
+        await broadcast({
+            "type": "PAIRING_RESULT",
+            "ok": True,
+            "addr": self.addr,
+            "name": self.name,
+            "status": result["status"],
+            "detail": result.get("detail"),
+        })
+        return result
+
+    async def _open_link(self):
+        """Bring up the GATT link: connect, read API version, subscribe."""
+        self.client = BleakClient(self.addr)
+        await self.client.connect()
+        self.connected = True
+
+        # ───────────── Read API version correctly ─────────────
+        try:
+            await asyncio.sleep(0.5)
+            data = await self.client.read_gatt_char(API_VERSION_UUID)
+            if data:
+                decoded = ''.join(chr(b) for b in data if 32 <= b <= 126).strip()
+                self.api_version = decoded or "Unknown"
+            else:
+                self.api_version = "Unknown"
+        except Exception as e:
+            # An unbonded link is reported here first — let the caller pair
+            # and retry instead of hiding it behind "Unavailable".
+            if pairing_required(e):
+                raise
+            print(f"⚠️ Could not read API version: {e}")
+            self.api_version = "Unavailable"
+
+        await self.client.start_notify(EVENT_UUID, self.handle_event)
+
+    async def _drop_link(self):
+        """Tear down a half-open link before retrying."""
         try:
             if self.client and self.client.is_connected:
-                return
+                await self.client.disconnect()
+        except Exception:
+            pass
+        self.connected = False
 
-            self.client = BleakClient(self.addr)
-            await self.client.connect()
-            self.connected = True
+    async def connect(self, allow_pairing: bool = True) -> bool:
+        """Connect to BLE device and subscribe for events.
 
-            # ───────────── Read API version correctly ─────────────
+        From BLE API 3.2 the timer only serves a bonded link, so pair first
+        when the host has no bond yet, and pair-then-retry if the timer
+        refuses the attributes of an unbonded connection.
+        """
+        try:
+            if self.client and self.client.is_connected:
+                return True
+
+            if allow_pairing:
+                self.paired = await pairing_mgr.is_paired(self.addr)
+                if self.paired is False:
+                    print(f"🔐 No bond for {self.name} ({self.addr}) — pairing first")
+                    await self.pair()
+
             try:
-                await asyncio.sleep(0.5)
-                data = await self.client.read_gatt_char(API_VERSION_UUID)
-                if data:
-                    decoded = ''.join(chr(b) for b in data if 32 <= b <= 126).strip()
-                    self.api_version = decoded or "Unknown"
-                else:
-                    self.api_version = "Unknown"
+                await self._open_link()
             except Exception as e:
-                print(f"⚠️ Could not read API version: {e}")
-                self.api_version = "Unavailable"
+                if not (allow_pairing and pairing_required(e)):
+                    raise
+                print(f"🔐 Timer requires pairing: {e}")
+                await self._drop_link()
+                await self.pair()
+                await self._open_link()
 
             print(f"✅ Connected to {self.name} ({self.addr}) [{self.model}] API v{self.api_version}")
 
@@ -267,17 +354,19 @@ class DeviceManager:
                 "name": self.name,
                 "model": self.model,
                 "api_version": self.api_version,
+                "paired": self.paired,
             })
-
-            await self.client.start_notify(EVENT_UUID, self.handle_event)
 
             if not self._wd_task or self._wd_task.done():
                 self._stop = False
                 self._wd_task = asyncio.create_task(self._watchdog())
+            return True
 
         except Exception as e:
             self.connected = False
+            self.last_error = str(e)
             await broadcast({"type": "ERROR", "message": f"connect failed: {e}"})
+            return False
 
     async def disconnect(self):
         """Manually stop notifications and disconnect."""
@@ -316,15 +405,30 @@ class DeviceManager:
                         "api_version": self.api_version,
                     })
                     try:
-                        await self.connect()
-                        await broadcast({
-                            "type": "WATCHDOG",
-                            "status": "reconnected",
-                            "addr": self.addr,
-                            "name": self.name,
-                            "model": self.model,
-                            "api_version": self.api_version,
-                        })
+                        # Never pop a pairing prompt from the watchdog — a
+                        # silent reconnect must not hijack the operator's
+                        # screen mid-stage. Tell them to re-pair instead.
+                        if await self.connect(allow_pairing=False):
+                            await broadcast({
+                                "type": "WATCHDOG",
+                                "status": "reconnected",
+                                "addr": self.addr,
+                                "name": self.name,
+                                "model": self.model,
+                                "api_version": self.api_version,
+                            })
+                        elif not self._pairing_hint_sent and self.last_error and pairing_required(
+                            Exception(self.last_error)
+                        ):
+                            self._pairing_hint_sent = True
+                            await broadcast({
+                                "type": "PAIRING_REQUIRED",
+                                "addr": self.addr,
+                                "name": self.name,
+                                "message": "The timer no longer accepts this "
+                                "connection — enable pairing mode on the timer "
+                                "and press Pair.",
+                            })
                     except Exception as e:
                         await broadcast({
                             "type": "WATCHDOG",
@@ -440,7 +544,13 @@ async def list_devices():
         if d.name and d.name.startswith(NAME_PREFIX):
             code = d.name[7].upper() if len(d.name) > 7 else "?"
             model = "SG Timer Sport" if code == "A" else "SG Timer GO" if code == "B" else "Unknown Model"
-            results.append({"name": d.name, "address": d.address, "model": model})
+            results.append({
+                "name": d.name,
+                "address": d.address,
+                "model": model,
+                # None when the platform cannot report bond state
+                "paired": await pairing_mgr.is_paired(d.address),
+            })
     return {"devices": results}
 
 @app.post("/connect")
@@ -456,14 +566,73 @@ async def connect_device(body: dict):
         devices[addr] = dm
     else:
         dm.name = name or dm.name
-    await dm.connect()
+    ok = await dm.connect()
     return {
-        "status": "connected",
+        "status": "connected" if ok else "failed",
         "address": addr,
         "name": dm.name,
         "model": dm.model,
         "api_version": dm.api_version,
+        "paired": dm.paired,
+        "error": None if ok else dm.last_error,
     }
+
+# ─────────────────────────────────────────────
+# Pairing (BLE API 3.2 requires a bonded link)
+# ─────────────────────────────────────────────
+def _device_for(addr: Optional[str], name: Optional[str] = None) -> "DeviceManager":
+    """Fetch the manager for an address, creating one if we never saw it."""
+    if not addr:
+        raise HTTPException(400, "Missing address")
+    dm = devices.get(addr)
+    if not dm:
+        dm = DeviceManager(addr, name or addr)
+        devices[addr] = dm
+    return dm
+
+
+@app.post("/pair")
+async def pair_device(body: dict):
+    """Start a pairing ceremony. The timer must be in pairing mode."""
+    dm = _device_for(body.get("address"), body.get("name"))
+    try:
+        result = await dm.pair()
+    except PairingError as e:
+        raise HTTPException(409, str(e))
+    return {"address": dm.addr, "name": dm.name, **result}
+
+
+@app.post("/pair/confirm")
+async def confirm_pairing(body: dict):
+    """Answer the pending ceremony — the confirmation done in the app."""
+    accept = bool(body.get("accept", True))
+    if not pairing_mgr.confirm(body.get("address"), accept, body.get("pin")):
+        raise HTTPException(404, "No pairing confirmation is pending")
+    return {"status": "accepted" if accept else "rejected"}
+
+
+@app.get("/pair/pending")
+async def pending_pairing(address: Optional[str] = None):
+    """The ceremony currently awaiting an answer, if any."""
+    return {"pending": pairing_mgr.pending(address)}
+
+
+@app.post("/unpair")
+async def unpair_device(body: dict):
+    """Forget the bond, so the timer can be paired again from scratch."""
+    addr = body.get("address")
+    if not addr:
+        raise HTTPException(400, "Missing address")
+    dm = devices.get(addr)
+    try:
+        result = await pairing_mgr.unpair(addr, client=dm.client if dm else None)
+    except PairingError as e:
+        raise HTTPException(409, str(e))
+    if dm:
+        dm.paired = False
+    await broadcast({"type": "UNPAIRED", "addr": addr, "name": dm.name if dm else addr})
+    return {"address": addr, **result}
+
 
 @app.post("/disconnect")
 async def disconnect_device(body: dict):
@@ -509,11 +678,13 @@ async def get_status():
                 "model": dm.model,
                 "api_version": dm.api_version,
                 "connected": bool(dm.client and dm.client.is_connected),
+                "paired": dm.paired,
             }
         )
     return {
         "connected": any(d["connected"] for d in connected_devices),
         "devices": connected_devices,
+        "pending_pairing": pairing_mgr.pending(),
     }
 
 # ─────────────────────────────────────────────
