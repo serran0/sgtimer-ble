@@ -28,6 +28,14 @@ body {
   box-shadow: 0 0 12px rgba(255, 102, 0, 0.6);
 }
 
+.btn:disabled,
+.btn:disabled:hover {
+  background: linear-gradient(135deg, #444, #222);
+  color: #888;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* ───────────── Pairing Dialog ───────────── */
 .pairing-overlay {
   position: fixed;

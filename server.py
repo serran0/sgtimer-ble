@@ -690,7 +690,23 @@ async def get_status():
 # ─────────────────────────────────────────────
 # Mount static files
 # ─────────────────────────────────────────────
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """Serve the UI with 'no-cache' so an upgraded build is never shadowed by
+    a stale admin page in the operator's browser.
+
+    The server and the UI ship in the same exe, so a cached admin.js from an
+    older release can leave new buttons wired to nothing. 'no-cache' still
+    allows caching — it just forces an ETag revalidation, so refreshes stay
+    cheap (304) while always matching the running server.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", RevalidatingStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

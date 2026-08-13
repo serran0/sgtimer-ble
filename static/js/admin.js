@@ -181,7 +181,10 @@ async function scanDevices() {
     opt.dataset.name = d.name || "";
     deviceSelect.appendChild(opt);
   });
+  updateDeviceButtons();
   log(`Found ${data.devices.length} device(s).`);
+  if (!data.devices.length)
+    log("⚠️ No timers found — switch the timer on and scan again.");
 }
 
 async function connectDevice() {
@@ -327,10 +330,19 @@ async function answerPairing(accept) {
   }
 }
 
+// Pair/Forget need a device; without one the buttons stay disabled so a
+// click can never look like it silently did nothing.
+function updateDeviceButtons() {
+  const hasDevice = Boolean(deviceSelect.value || localStorage.getItem("lastDeviceAddr"));
+  pairBtn.disabled = !hasDevice;
+  unpairBtn.disabled = !hasDevice;
+  connectBtn.disabled = !hasDevice;
+}
+
 async function pairDevice() {
   const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
   if (!addr) {
-    log("⚠️ No device selected to pair.");
+    log("⚠️ No device selected — press 🔍 Scan and pick your timer first.");
     return;
   }
   const selected = deviceSelect.options[deviceSelect.selectedIndex];
@@ -425,6 +437,9 @@ async function loadSessions(append = false) {
   offset += list.length;
   loadMoreBtn.style.display = list.length === PAGE_SIZE ? "inline-block" : "none";
 }
+
+deviceSelect.addEventListener("change", updateDeviceButtons);
+updateDeviceButtons();
 
 // ───────────── Expand/Collapse Session Details ─────────────
 async function toggleSessionDetails(card, sessId) {
@@ -535,6 +550,7 @@ function updateDeviceDropdown(addr, name = null) {
   opt.textContent = `${name || "Connected Device"} (${addr})`;
   deviceSelect.appendChild(opt);
   deviceSelect.value = addr;
+  updateDeviceButtons();
 }
 
 // ───────────── Restore Last Connected Device ─────────────
