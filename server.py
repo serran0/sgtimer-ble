@@ -462,26 +462,57 @@ class DeviceManager:
             await broadcast({"type": "ERROR", "message": f"connect failed: {self.last_error}"})
             return False
 
-    async def disconnect(self):
-        """Manually stop notifications and disconnect."""
+    async def disconnect(self) -> bool:
+        """Manually stop notifications and drop the link.
+
+        Unsubscribing and disconnecting are attempted independently: a
+        failing stop_notify must not skip the disconnect itself, which is
+        what previously left the timer connected while the UI reported
+        otherwise.
+        """
         self._stop = True
         if self._wd_task and not self._wd_task.done():
             self._wd_task.cancel()
-        try:
-            if self.client and self.client.is_connected:
-                await self.client.stop_notify(EVENT_UUID)
-                await self.client.disconnect()
-        except Exception:
-            pass
-        self.connected = False
-        print(f"⚠️ Disconnected from {self.name} ({self.addr}) [{self.model}]")
+
+        client, self.client = self.client, None
+        still_connected = False
+
+        if client is not None:
+            try:
+                if client.is_connected:
+                    await client.stop_notify(EVENT_UUID)
+            except Exception as e:
+                print(f"⚠️ Could not stop notifications: {e}")
+
+            try:
+                await client.disconnect()
+            except Exception as e:
+                self.last_error = str(e)
+                print(f"⚠️ Disconnect failed: {e}")
+
+            try:
+                still_connected = bool(client.is_connected)
+            except Exception:
+                still_connected = False
+
+        self.connected = still_connected
+        if still_connected:
+            # Put the client back: it is still the live handle to the timer.
+            self.client = client
+            print(f"⚠️ {self.name} ({self.addr}) is still connected after disconnect")
+        else:
+            print(f"⚠️ Disconnected from {self.name} ({self.addr}) [{self.model}]")
+
         await broadcast({
-            "type": "DEVICE_DISCONNECTED",
+            "type": "DEVICE_DISCONNECTED" if not still_connected else "ERROR",
             "addr": self.addr,
             "name": self.name,
             "model": self.model,
             "api_version": self.api_version,
+            "message": "Disconnect did not take effect — the timer still "
+                       "reports a connection" if still_connected else None,
         })
+        return not still_connected
 
     async def _watchdog(self):
         """Reconnect automatically if BLE link drops."""
@@ -740,8 +771,12 @@ async def disconnect_device(body: dict):
     dm = devices.get(addr)
     if not dm:
         return {"status": "not connected"}
-    await dm.disconnect()
-    return {"status": "disconnected", "address": addr}
+    ok = await dm.disconnect()
+    return {
+        "status": "disconnected" if ok else "still_connected",
+        "address": addr,
+        "error": None if ok else dm.last_error,
+    }
 
 # ─────────────────────────────────────────────
 # Title Management

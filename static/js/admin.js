@@ -80,6 +80,7 @@ ws.onmessage = (e) => {
         log(`⚠️ Device disconnected: ${name} (${model}${apiVer})`);
         currentConnectedDevice = null;
         localStorage.removeItem("lastDeviceAddr");
+        updateDeviceButtons();
       }, 500);
       break;
     }
@@ -256,14 +257,26 @@ async function disconnectDevice() {
   }
 
   log(`Disconnecting from ${addr}...`);
-  await fetch("/disconnect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address: addr }),
-  });
+  try {
+    const res = await fetch("/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: addr }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.status === "still_connected") {
+      log(`⚠️ Disconnect did not take effect${data.error ? `: ${data.error}` : "."}`);
+      return; // still connected — do not pretend otherwise
+    }
+    if (data.status === "not connected") log("ℹ️ That device was not connected.");
+  } catch (e) {
+    log("❌ Error disconnecting: " + e.message);
+    return;
+  }
 
   currentConnectedDevice = null;
   localStorage.removeItem("lastDeviceAddr");
+  updateDeviceButtons();
 }
 
 // ───────────── Pairing ─────────────
@@ -348,10 +361,16 @@ async function answerPairing(accept) {
 // hint next to the dropdown always states what the app thinks is selected.
 function updateDeviceButtons() {
   const addr = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
-  deviceHint.textContent = addr
-    ? `Selected: ${addr}`
-    : "No timer selected — press 🔍 Scan";
-  deviceHint.classList.toggle("warn", !addr);
+  // A remembered address is not a connection: say which one this is, so the
+  // hint can never read as "connected" while the server says otherwise.
+  if (currentConnectedDevice) {
+    deviceHint.textContent = `Connected: ${currentConnectedDevice}`;
+  } else if (addr) {
+    deviceHint.textContent = `Selected: ${addr} — not connected`;
+  } else {
+    deviceHint.textContent = "No timer selected — press 🔍 Scan";
+  }
+  deviceHint.classList.toggle("warn", !currentConnectedDevice);
 }
 
 async function pairDevice() {
@@ -552,8 +571,14 @@ fetch("/status")
       localStorage.setItem("lastDeviceAddr", d.address);
       updateDeviceDropdown(d.address, d.name);
     } else {
-      log("ℹ️ No device currently connected.");
+      currentConnectedDevice = null;
+      log(
+        lastAddr
+          ? "ℹ️ No device currently connected — press 🔗 Connect to reconnect."
+          : "ℹ️ No device currently connected."
+      );
     }
+    updateDeviceButtons();
   })
   .catch((e) => log("⚠️ Could not fetch connection status: " + e.message));
 
@@ -572,8 +597,9 @@ function updateDeviceDropdown(addr, name = null) {
 // ───────────── Restore Last Connected Device ─────────────
 const lastAddr = localStorage.getItem("lastDeviceAddr");
 if (lastAddr) {
-  updateDeviceDropdown(lastAddr, "Last Connected");
-  log(`💾 Restored last connected device: ${lastAddr}`);
+  // Remembered, not connected — /status below reports what is actually live.
+  updateDeviceDropdown(lastAddr, "Last used");
+  log(`💾 Last used device: ${lastAddr} (not connected yet)`);
 }
 
 // ───────────── Buttons ─────────────
