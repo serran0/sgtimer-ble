@@ -21,6 +21,7 @@ const deviceHint = document.getElementById("deviceHint");
 const aliasInput = document.getElementById("aliasInput");
 const setAliasBtn = document.getElementById("setAliasBtn");
 const clearAliasBtn = document.getElementById("clearAliasBtn");
+const resetAdapterBtn = document.getElementById("resetAdapterBtn");
 const clearTitleBtn = document.getElementById("clearTitleBtn");
 const titleScale = document.getElementById("titleScale");
 const statsScale = document.getElementById("statsScale");
@@ -141,6 +142,18 @@ ws.onmessage = (e) => {
 
     case "LINK_STILL_HELD":
       log(`⚠️ ${msg.message}`);
+      log("   ♻️ Restart Bluetooth will force it down without touching the timer.");
+      break;
+
+    case "ADAPTER_RESET":
+      log(
+        (msg.state === "failed" ? "❌ " : msg.state === "done" ? "✅ " : "♻️ ") +
+          msg.message
+      );
+      if (msg.state === "done") {
+        currentConnectedDevice = null;
+        updateDeviceButtons();
+      }
       break;
 
     case "CONNECT_RETRY":
@@ -478,6 +491,33 @@ async function saveDisplaySettings(settings) {
   }
 }
 
+// ───────────── Bluetooth Recovery ─────────────
+// Windows offers no way to disconnect one BLE device, so when a link will
+// not come down the only software cure is restarting the radio.
+async function resetAdapter() {
+  if (
+    !confirm(
+      "Restart the Bluetooth adapter?\n\n" +
+        "Every Bluetooth device on this PC — mice, keyboards, headsets — " +
+        "will disconnect for a few seconds."
+    )
+  )
+    return;
+
+  resetAdapterBtn.disabled = true;
+  try {
+    const res = await fetch("/reset_adapter", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+      log(`❌ Could not restart Bluetooth: ${data.detail || `HTTP ${res.status}`}`);
+  } catch (e) {
+    log("❌ Error restarting Bluetooth: " + e.message);
+  } finally {
+    resetAdapterBtn.disabled = false;
+  }
+}
+
+resetAdapterBtn.addEventListener("click", resetAdapter);
 setAliasBtn.addEventListener("click", () => saveAlias(aliasInput.value.trim()));
 clearAliasBtn.addEventListener("click", () => {
   aliasInput.value = "";

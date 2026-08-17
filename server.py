@@ -89,6 +89,24 @@ NAME_PREFIX = "SG-SST"
 CONNECT_ATTEMPTS = 4
 CONNECT_RETRY_DELAY = 2.0
 
+
+def _bluetooth_setting(key: str, default: bool = False) -> bool:
+    """Read a [bluetooth] flag from settings.ini."""
+    try:
+        cfg = configparser.ConfigParser()
+        cfg.read(os.path.join(BASE_DIR, "settings.ini"))
+        if cfg.has_section("bluetooth"):
+            return cfg["bluetooth"].getboolean(key, default)
+    except Exception as e:
+        print(f"⚠️ Could not read [bluetooth] {key}: {e}")
+    return default
+
+
+# Off by default: restarting the radio drops every Bluetooth device on the
+# machine, so it is the operator's call whether that is an acceptable price
+# for not having to walk over and power-cycle the timer.
+RESET_ADAPTER_ON_STUCK_LINK = _bluetooth_setting("reset_adapter_on_stuck_link")
+
 # ─────────────────────────────────────────────
 # Device aliases and display settings
 # ─────────────────────────────────────────────
@@ -862,14 +880,36 @@ async def pair_device(body: dict):
         raise HTTPException(409, str(e))
 
     connected = None
+    adapter_reset = False
     if body.get("connect", True):
         connected = await dm.connect(just_paired=True)
+
+        # The link the ceremony used sometimes will not come down, and the
+        # only software cure is restarting the radio. Opt-in, because that
+        # drops every Bluetooth device on the machine.
+        if not connected and RESET_ADAPTER_ON_STUCK_LINK:
+            print("♻️ Connect failed after pairing — restarting the Bluetooth adapter")
+            await broadcast({
+                "type": "ADAPTER_RESET",
+                "state": "started",
+                "message": "Connecting after pairing failed — restarting the "
+                           "Bluetooth adapter. All Bluetooth devices drop briefly.",
+            })
+            try:
+                await pairing_mgr.reset_adapter()
+                adapter_reset = True
+                connected = await dm.connect(just_paired=True)
+            except PairingError as e:
+                await broadcast({
+                    "type": "ADAPTER_RESET", "state": "failed", "message": str(e)
+                })
 
     return {
         "address": dm.addr,
         "name": dm.name,
         "alias": dm.alias,
         "connected": connected,
+        "adapter_reset": adapter_reset,
         "connect_error": None if connected is not False else dm.last_error,
         **result,
     }
@@ -888,6 +928,41 @@ async def confirm_pairing(body: dict):
 async def pending_pairing(address: Optional[str] = None):
     """The ceremony currently awaiting an answer, if any."""
     return {"pending": pairing_mgr.pending(address)}
+
+
+@app.post("/reset_adapter")
+async def reset_adapter():
+    """Cycle the Bluetooth radio to force a stuck link down.
+
+    Windows has no way to disconnect a single BLE device, so this is the
+    software equivalent of power-cycling the timer — at the cost of dropping
+    every Bluetooth connection on the machine for a few seconds.
+    """
+    await broadcast({
+        "type": "ADAPTER_RESET",
+        "state": "started",
+        "message": "Restarting the Bluetooth adapter — all Bluetooth devices "
+                   "will drop for a few seconds.",
+    })
+    try:
+        result = await pairing_mgr.reset_adapter()
+    except PairingError as e:
+        await broadcast({"type": "ADAPTER_RESET", "state": "failed", "message": str(e)})
+        raise HTTPException(409, str(e))
+
+    # Every link is gone, so nothing we were holding is valid any more.
+    for dm in devices.values():
+        dm.connected = False
+        dm.os_link_held = False
+        dm.client = None
+
+    await broadcast({
+        "type": "ADAPTER_RESET",
+        "state": "done",
+        "message": f"Bluetooth adapter restarted ({', '.join(result['radios'])}). "
+                   "Scan and connect again.",
+    })
+    return result
 
 
 @app.post("/unpair")

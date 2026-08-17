@@ -63,6 +63,30 @@ if IS_WINDOWS:
     except Exception as e:  # pragma: no cover - depends on the host
         _WINRT_ERROR = str(e)
 
+# Radio control is imported separately: it is only needed for the last-resort
+# adapter reset, and its absence must not disable pairing. bleak already
+# depends on this projection and imports RadioState itself, so PyInstaller
+# bundles it without any extra hidden imports.
+_RADIO_ERROR: Optional[str] = None
+if IS_WINDOWS:
+    try:
+        try:
+            from winrt.windows.devices.radios import (
+                Radio,
+                RadioAccessStatus,
+                RadioKind,
+                RadioState,
+            )
+        except ImportError:
+            from bleak_winrt.windows.devices.radios import (
+                Radio,
+                RadioAccessStatus,
+                RadioKind,
+                RadioState,
+            )
+    except Exception as e:  # pragma: no cover - depends on the host
+        _RADIO_ERROR = str(e)
+
 
 def _address_to_int(address: str) -> int:
     """Convert 'AA:BB:CC:DD:EE:FF' to the integer WinRT expects."""
@@ -290,6 +314,64 @@ class PairingManager:
         if settle:
             await asyncio.sleep(settle)
         return status
+
+    async def reset_adapter(self, off_delay: float = 2.0, settle: float = 4.0) -> dict:
+        """Cycle the Bluetooth radio to force every LE link down.
+
+        Windows exposes no API to disconnect one BLE device: the OS owns the
+        link and multiplexes GATT sessions over it, so the only supported way
+        to end it is to release every handle — which does not help when
+        something outside this process is holding it. Toggling the radio is
+        the one documented way to make the stack drop connections on demand,
+        and is the software equivalent of power-cycling the timer.
+
+        It is deliberately not automatic: this drops *every* Bluetooth
+        connection on the machine for a few seconds, mice and headsets
+        included.
+        """
+        if not IS_WINDOWS:
+            raise PairingError("Resetting the adapter is only supported on Windows")
+        if _RADIO_ERROR:
+            raise PairingError(f"Radio control unavailable: {_RADIO_ERROR}")
+
+        access = await Radio.request_access_async()
+        if access != RadioAccessStatus.ALLOWED:
+            raise PairingError(
+                f"Windows denied access to the Bluetooth radio ({_enum_name(access)})"
+            )
+
+        radios = [r for r in await Radio.get_radios_async() if r.kind == RadioKind.BLUETOOTH]
+        if not radios:
+            raise PairingError("No Bluetooth radio found on this machine")
+
+        # Drop our own handles first, so the radio is not turned back on with
+        # stale references waiting to re-establish anything.
+        gc.collect()
+
+        toggled = []
+        try:
+            for radio in radios:
+                label = radio.name or "Bluetooth"
+                result = await radio.set_state_async(RadioState.OFF)
+                if result != RadioAccessStatus.ALLOWED:
+                    raise PairingError(
+                        f"Windows refused to switch off {label} "
+                        f"({_enum_name(result)})"
+                    )
+                toggled.append(label)
+            await asyncio.sleep(off_delay)
+        finally:
+            # Always switch the radio back on, even if one of them refused —
+            # leaving Bluetooth off would be far worse than the stuck link.
+            for radio in radios:
+                try:
+                    await radio.set_state_async(RadioState.ON)
+                except Exception as e:
+                    print(f"⚠️ Could not switch the radio back on: {e}")
+
+        await asyncio.sleep(settle)
+        gc.collect()
+        return {"status": "reset", "radios": toggled}
 
     async def _pair_winrt(self, addr: str, name: str) -> dict:
         info = await self._device_information(addr)

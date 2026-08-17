@@ -58,6 +58,30 @@ code), `PAIRING_RESULT`, `PAIRING_CANCELLED`, `PAIRING_REQUIRED` and
 `UNPAIRED`. A pending request is replayed to newly connected clients, so
 reloading the admin page mid-ceremony does not lose the prompt.
 
+## When a timer stays connected after Disconnect
+
+Windows has **no API to disconnect a single BLE device**. The OS owns the
+radio link and multiplexes GATT sessions over it, so a link only drops once
+every handle referencing it is released — which does not help when something
+outside this process is holding it, as can happen right after bonding.
+
+The one documented way to make the stack let go on demand is to restart the
+Bluetooth radio, which is what **♻️ Restart Bluetooth** in the admin panel
+does. It is the software equivalent of power-cycling the timer, and costs the
+same as it sounds: *every* Bluetooth device on the PC — mice, keyboards,
+headsets — drops for a few seconds. That is why it is a button rather than
+something automatic.
+
+To have it happen by itself when connecting after pairing fails, add to
+`settings.ini`:
+
+```ini
+[bluetooth]
+reset_adapter_on_stuck_link = true
+```
+
+It only ever fires on that specific failure, never on a healthy pairing.
+
 ## Naming timers
 
 Every SG timer advertises as `SG-SST4…` plus a serial number, which makes a
