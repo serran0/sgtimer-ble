@@ -324,6 +324,7 @@ class DeviceManager:
         self.ble_device = None
         self.alias = alias_for(addr)
         self._stale_clients: list = []
+        self.os_link_held = False
         self._pairing_hint_sent = False
 
     @property
@@ -523,6 +524,7 @@ class DeviceManager:
                 await self.pair()
                 await self._open_link_with_retries()
 
+            self.os_link_held = False
             print(f"✅ Connected to {self.name} ({self.addr}) [{self.model}] API v{self.api_version}")
 
             await broadcast({
@@ -582,6 +584,32 @@ class DeviceManager:
             except Exception:
                 still_connected = False
 
+        # bleak closing its GATT session does not necessarily end the OS-level
+        # connection — the timer can still show a client attached while the
+        # app believes it disconnected. Ask the stack to let go as well.
+        os_status = None
+        try:
+            os_status = await pairing_mgr.release_link(self.addr, settle=0)
+        except Exception as e:
+            print(f"⚠️ Could not release the OS-level link: {e}")
+
+        # Two distinct facts: whether we still hold a GATT session, and
+        # whether the radio link is up at all. Our session can be closed while
+        # the timer still shows a client attached, so keep them apart.
+        self.os_link_held = bool(
+            os_status
+            and os_status.upper().endswith("CONNECTED")
+            and "DIS" not in os_status.upper()
+        )
+        if os_status:
+            print(f"ℹ️ Windows reports the timer as {os_status} after disconnect")
+        if self.os_link_held:
+            self.last_error = (
+                "Windows still reports a connection to the timer. Another app "
+                "may be holding it, or the bond keeps it open — use Forget to "
+                "drop the pairing if it persists."
+            )
+
         self.connected = still_connected
         if still_connected:
             # Put the client back: it is still the live handle to the timer.
@@ -596,10 +624,18 @@ class DeviceManager:
             "name": self.label,
             "model": self.model,
             "api_version": self.api_version,
+            "os_link_held": self.os_link_held,
             "message": "Disconnect did not take effect — the timer still "
                        "reports a connection" if still_connected else None,
         })
-        return not still_connected
+        if self.os_link_held:
+            await broadcast({
+                "type": "LINK_STILL_HELD",
+                "addr": self.addr,
+                "name": self.label,
+                "message": self.last_error,
+            })
+        return not (still_connected or self.os_link_held)
 
     async def _watchdog(self):
         """Reconnect automatically if BLE link drops."""
@@ -991,6 +1027,8 @@ async def get_status():
                 "model": dm.model,
                 "api_version": dm.api_version,
                 "connected": bool(dm.client and dm.client.is_connected),
+                # the radio link can outlive our GATT session
+                "os_link_held": dm.os_link_held,
                 "paired": dm.paired,
             }
         )

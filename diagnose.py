@@ -199,6 +199,46 @@ async def main() -> int:
     section("5. bleak connect using the address string")
     await try_bleak(BleakClient, target_addr, "address")
 
+    # ── 6. does the connection actually end? ─────────────────────────────
+    section("6. Does disconnecting really drop the link?")
+    if winrt_ok:
+        try:
+            import gc
+
+            probe = await BluetoothLEDevice.from_bluetooth_address_async(
+                address_to_int(target_addr)
+            )
+            before = getattr(probe.connection_status, "name", "?") if probe else "?"
+            if probe is not None:
+                probe.close()
+            probe = None
+            gc.collect()
+            await asyncio.sleep(2.0)
+
+            probe = await BluetoothLEDevice.from_bluetooth_address_async(
+                address_to_int(target_addr)
+            )
+            after = getattr(probe.connection_status, "name", "?") if probe else "?"
+            if probe is not None:
+                probe.close()
+            probe = None
+            gc.collect()
+
+            say(f"  connection status before releasing handles: {before}")
+            say(f"  connection status after  releasing handles: {after}")
+            if after == "CONNECTED":
+                say("")
+                say("  ✖ Windows still holds the link with no handle of ours open.")
+                say("    => something outside this app is keeping it: another")
+                say("       program, or the Windows stack holding the bond open.")
+                say("       Unpairing (Forget) is the reliable way to drop it.")
+            else:
+                say("\n  ✔ The link drops once our handles are released.")
+        except Exception as e:
+            fail("connection release probe", e)
+    else:
+        say("  skipped")
+
     section("Done")
     say(f"  Full debug log written to {LOG_FILE}")
     say("  Please send the output above plus that file.")

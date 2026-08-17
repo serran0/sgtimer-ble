@@ -18,6 +18,7 @@ Other platforms fall back to bleak's pairing where it exists.
 """
 
 import asyncio
+import gc
 import sys
 from typing import Dict, Optional, Tuple
 
@@ -192,6 +193,21 @@ class PairingManager:
             raise PairingError("Unpairing is not supported on this platform")
 
     # ───────────── Windows (WinRT custom pairing) ─────────────
+    def _close_device(self, device, context: str) -> None:
+        """Dispose a WinRT device handle, reporting failures rather than
+        hiding them.
+
+        Every one of these objects holds the timer's single connection slot
+        open until it is disposed, so a close that quietly fails is exactly
+        how a connection outlives the code that made it.
+        """
+        if device is None:
+            return
+        try:
+            device.close()
+        except Exception as e:
+            print(f"⚠️ Could not release the Bluetooth handle ({context}): {e}")
+
     async def _device_information(self, addr: str):
         device = await BluetoothLEDevice.from_bluetooth_address_async(
             _address_to_int(addr)
@@ -208,29 +224,46 @@ class PairingManager:
                 device.device_information.id
             )
         finally:
-            try:
-                device.close()
-            except Exception:
-                pass
+            self._close_device(device, "device information")
 
-    async def _release_link(self, addr: str, settle: float = RELEASE_SETTLE) -> None:
-        """Drop the connection the pairing ceremony leaves behind.
+    async def release_link(self, addr: str, settle: float = RELEASE_SETTLE) -> Optional[str]:
+        """Ask the OS to drop its own connection to the timer.
 
-        Windows stays connected to the timer once pairing completes, and the
-        timer only serves one client at a time — so without this the next
-        connect is refused until the timer is power-cycled. Disposing every
-        BluetoothLEDevice reference is what makes the stack let go.
+        Windows keeps the link the pairing ceremony used, and closing bleak's
+        GATT session does not necessarily end it — the timer then still shows
+        a client attached even though the app believes it disconnected. The
+        stack only lets go once every WinRT handle to the device is disposed,
+        so collect any that Python is still holding, then dispose a fresh one.
+
+        Returns the connection status Windows reports afterwards, or None when
+        it cannot be determined.
         """
+        if not (IS_WINDOWS and not _WINRT_ERROR):
+            return None
+
+        # WinRT handles are released when their Python wrapper is collected;
+        # a lingering wrapper is a lingering connection, so force the issue
+        # instead of waiting for the collector to get round to it.
+        gc.collect()
+
+        status = None
+        device = None
         try:
             device = await BluetoothLEDevice.from_bluetooth_address_async(
                 _address_to_int(addr)
             )
             if device is not None:
-                device.close()
+                status = _enum_name(device.connection_status)
         except Exception as e:
-            print(f"⚠️ Could not release the link after pairing: {e}")
+            print(f"⚠️ Could not reach the Bluetooth stack to release: {e}")
+        finally:
+            self._close_device(device, "link release")
+            device = None
+            gc.collect()
+
         if settle:
             await asyncio.sleep(settle)
+        return status
 
     async def _pair_winrt(self, addr: str, name: str) -> dict:
         info = await self._device_information(addr)
@@ -288,14 +321,19 @@ class PairingManager:
         if not paired:
             raise PairingError(_explain_failure(status))
 
-        # Hand the timer back before anyone tries to open a GATT link to it.
-        await self._release_link(addr)
+        protection = _enum_name(result.protection_level_used)
+
+        # Drop every handle the ceremony used before releasing the link.
+        # These wrappers each keep the device alive, and release_link's
+        # collection cannot free what this scope is still referencing.
+        del custom, pairing, info, result
+        await self.release_link(addr)
 
         return {
             "status": "paired",
             "paired": True,
             "detail": status,
-            "protection_level": _enum_name(result.protection_level_used),
+            "protection_level": protection,
         }
 
     async def _answer_request(self, addr, name, args, deferral, kind_names) -> None:

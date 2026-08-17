@@ -139,6 +139,10 @@ ws.onmessage = (e) => {
       log(`🔐 ${msg.message}`);
       break;
 
+    case "LINK_STILL_HELD":
+      log(`⚠️ ${msg.message}`);
+      break;
+
     case "CONNECT_RETRY":
       log(
         `⏳ Connect attempt ${msg.attempt}/${msg.attempts} failed — retrying ` +
