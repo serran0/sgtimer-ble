@@ -2,6 +2,14 @@
 
 Talk to Timur
 
+## Requirements
+
+Python 3.10–3.14 (any of these works — `bleak`'s WinRT backend no longer
+splits behavior by Python version). `pip install -r requirements.txt` pulls
+prebuilt wheels for every pinned dependency, including compiled ones
+(`pydantic-core`, `watchfiles`, and Windows' own `winrt-*` packages) — no
+Rust or C++ toolchain needed on a plain machine.
+
 ## Pairing (BLE API 3.2 and newer)
 
 Newer SG timer firmware only serves its data over a **bonded** Bluetooth link,

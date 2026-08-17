@@ -363,11 +363,12 @@ class PairingManager:
             }
         )
         try:
-            ok = await client.pair()
+            # bleak >= 1.0 always returns None here and raises on failure
+            # instead of returning False, so success is "no exception" —
+            # not a check of the awaited value.
+            await client.pair()
         except Exception as e:
             raise PairingError(f"Pairing failed: {e}") from e
-        if not ok:
-            raise PairingError("Pairing was rejected")
         return {"status": "paired", "paired": True, "detail": "bleak"}
 
 
