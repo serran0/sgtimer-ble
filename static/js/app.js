@@ -21,6 +21,48 @@ let totalShots = parseInt(localStorage.getItem("totalShots_" + sessId)) || 0;
 let firstShotTime = parseFloat(localStorage.getItem("firstShotTime_" + sessId)) || 0;
 let currentSessionState = localStorage.getItem("session_state") || "STOPPED";
 
+// ───────────── Inactivity Clear ─────────────
+// A finished or suspended session otherwise stays on screen indefinitely.
+// After 1 minute with no new SESSION_STARTED, blank the displayed stats —
+// but only the DOM: shots/bestSplit/etc. above are left untouched, so a
+// late SESSION_RESUMED can redraw exactly where the session left off.
+const INACTIVITY_CLEAR_MS = 60 * 1000;
+let inactivityTimer = null;
+let overlayCleared = false;
+
+function scheduleInactivityClear() {
+  cancelInactivityClear();
+  inactivityTimer = setTimeout(() => {
+    inactivityTimer = null;
+    if (currentSessionState === "LIVE") return; // a shot arrived meanwhile
+    clearOverlayDisplay();
+  }, INACTIVITY_CLEAR_MS);
+}
+
+function cancelInactivityClear() {
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = null;
+  }
+}
+
+function clearOverlayDisplay() {
+  overlayCleared = true;
+  firstShotDiv.textContent = "First Shot - 0.00";
+  bestSplitDiv.textContent = "Best Split - 0.00";
+  totalTimeDiv.textContent = "Total Time - 0.00";
+  totalShotsDiv.textContent = "Total Shots - 0";
+  shotsDiv.innerHTML = "";
+  console.log("Overlay cleared after 60s of inactivity — retained in memory for a possible resume.");
+}
+
+function restoreOverlayDisplay() {
+  overlayCleared = false;
+  updateStatsDisplay();
+  restoreShotList();
+  console.log("Session resumed — restored overlay from memory.");
+}
+
 // ───────────── UI Helpers ─────────────
 function updateStatus(state) {
   currentSessionState = state;
@@ -89,6 +131,7 @@ function restoreShotList() {
   updateStatus(currentSessionState);
   updateStatsDisplay();
   restoreShotList();
+  if (currentSessionState !== "LIVE") scheduleInactivityClear();
 
   try {
     const res = await fetch("/status");
@@ -143,6 +186,7 @@ ws.onopen = async () => {
   updateStatsDisplay();
   updateStatus(localStorage.getItem("session_state") || "STOPPED");
   restoreShotList();
+  if (currentSessionState !== "LIVE") scheduleInactivityClear();
 };
 
 ws.onclose = () => {
@@ -184,6 +228,9 @@ ws.onmessage = (e) => {
       break;
 
     case "SESSION_STARTED":
+      cancelInactivityClear();
+      overlayCleared = false;
+
       sessId = msg.sess_id || Date.now().toString();
       localStorage.setItem("sessId", sessId);
 
@@ -205,6 +252,9 @@ ws.onmessage = (e) => {
       break;
 
     case "SHOT_DETECTED": {
+      cancelInactivityClear();
+      if (overlayCleared) overlayCleared = false; // defensive: a shot implies LIVE
+
       const shotNum = msg.num || (totalShots + 1);
       const shotTime = msg.time;
 
@@ -236,14 +286,18 @@ ws.onmessage = (e) => {
 
     case "SESSION_SUSPENDED":
       updateStatus("STANDBY");
+      scheduleInactivityClear();
       break;
 
     case "SESSION_RESUMED":
+      cancelInactivityClear();
+      if (overlayCleared) restoreOverlayDisplay();
       updateStatus("LIVE");
       break;
 
     case "SESSION_STOPPED":
       updateStatus("STOPPED");
+      scheduleInactivityClear();
 
       if (sessId) {
         localStorage.removeItem("bestSplit_" + sessId);

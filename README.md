@@ -46,3 +46,14 @@ WebSocket clients receive `PAIRING_STARTED`, `PAIRING_REQUEST` (carries the
 code), `PAIRING_RESULT`, `PAIRING_CANCELLED`, `PAIRING_REQUIRED` and
 `UNPAIRED`. A pending request is replayed to newly connected clients, so
 reloading the admin page mid-ceremony does not lose the prompt.
+
+## Overlay inactivity clear (display page)
+
+`index.html` normally keeps showing a session's stats until the next
+`SESSION_STARTED`, including after `SESSION_SUSPENDED` or `SESSION_STOPPED` —
+useful right after a run, but stale if the next shooter is a while off. After
+60 seconds in a non-LIVE state with no new session, the overlay blanks the
+times/shot list on screen. The underlying data is kept in JS memory (not
+cleared, not just localStorage), so a late `SESSION_RESUMED` restores exactly
+where it left off. The clear never fires while LIVE, so a slow shooter
+mid-string is unaffected.
