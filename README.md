@@ -27,6 +27,9 @@ To pair a timer:
 3. A dialog shows the confirmation code. Check that it matches the code on the
    timer, then confirm in **both** places.
 
+Pairing connects the timer as soon as it succeeds — there is no need to press
+**Connect** afterwards. (`POST /pair` accepts `connect: false` to pair only.)
+
 Once bonded, the timer reconnects on its own; the watchdog never re-prompts
 mid-stage. Use **Forget** if the timer was reset or has forgotten this PC —
 that clears the stale bond so you can pair again from scratch.

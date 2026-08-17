@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 import configparser
 import asyncio
@@ -323,6 +323,7 @@ class DeviceManager:
         self.last_error: Optional[str] = None
         self.ble_device = None
         self.alias = alias_for(addr)
+        self._stale_clients: list = []
         self._pairing_hint_sent = False
 
     @property
@@ -397,6 +398,11 @@ class DeviceManager:
 
     async def _open_link(self):
         """Bring up the GATT link: connect, read API version, subscribe."""
+        # Never leave a previous handle behind: the timer serves one client,
+        # and an orphaned BleakClient keeps holding that slot.
+        if self.client is not None:
+            await self._drop_link()
+
         self.client = BleakClient(self.ble_device or self.addr)
         await self.client.connect()
         self.connected = True
@@ -451,15 +457,32 @@ class DeviceManager:
         raise last_error
 
     async def _drop_link(self):
-        """Tear down a half-open link before retrying."""
-        try:
-            if self.client and self.client.is_connected:
-                await self.client.disconnect()
-        except Exception:
-            pass
+        """Tear down a half-open link before retrying.
+
+        Clears the handle either way. If the disconnect fails the client is
+        remembered instead of discarded — a forgotten client still holds the
+        timer's only connection slot, which made a later Disconnect look like
+        it did nothing.
+        """
+        client, self.client = self.client, None
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception as e:
+                print(f"⚠️ Could not drop half-open link: {e}")
+                self._stale_clients.append(client)
         self.connected = False
 
-    async def connect(self, allow_pairing: bool = True) -> bool:
+    async def _release_stale_clients(self) -> None:
+        """Retry disconnecting handles that would not go down earlier."""
+        stale, self._stale_clients = self._stale_clients, []
+        for client in stale:
+            try:
+                await client.disconnect()
+            except Exception as e:
+                print(f"⚠️ A stale connection would not close: {e}")
+
+    async def connect(self, allow_pairing: bool = True, just_paired: bool = False) -> bool:
         """Connect to BLE device and subscribe for events.
 
         From BLE API 3.2 the timer only serves a bonded link, so pair first
@@ -474,7 +497,9 @@ class DeviceManager:
             # advertising now, and after pairing it may go quiet.
             await self._resolve_target()
 
-            paired_now = False
+            # A caller that has just run the ceremony gets the same settle
+            # allowance as one that paired inside this call.
+            paired_now = just_paired
             if allow_pairing:
                 self.paired = await pairing_mgr.is_paired(self.addr)
                 if self.paired is False:
@@ -531,6 +556,10 @@ class DeviceManager:
         self._stop = True
         if self._wd_task and not self._wd_task.done():
             self._wd_task.cancel()
+
+        # Anything left over from a retried connect holds the timer's single
+        # slot just as firmly as the current handle does.
+        await self._release_stale_clients()
 
         client, self.client = self.client, None
         still_connected = False
@@ -786,13 +815,30 @@ def _device_for(addr: Optional[str], name: Optional[str] = None) -> "DeviceManag
 
 @app.post("/pair")
 async def pair_device(body: dict):
-    """Start a pairing ceremony. The timer must be in pairing mode."""
+    """Pair with a timer and bring the link up.
+
+    Pairing is only ever a means to an end, so the connection follows
+    automatically rather than leaving the operator to press Connect as a
+    separate step. Pass ``connect: false`` to pair only.
+    """
     dm = _device_for(body.get("address"), body.get("name"))
     try:
         result = await dm.pair()
     except PairingError as e:
         raise HTTPException(409, str(e))
-    return {"address": dm.addr, "name": dm.name, **result}
+
+    connected = None
+    if body.get("connect", True):
+        connected = await dm.connect(just_paired=True)
+
+    return {
+        "address": dm.addr,
+        "name": dm.name,
+        "alias": dm.alias,
+        "connected": connected,
+        "connect_error": None if connected is not False else dm.last_error,
+        **result,
+    }
 
 
 @app.post("/pair/confirm")

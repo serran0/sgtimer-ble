@@ -2,7 +2,7 @@
 // file (not fetched) so it reflects whatever JS the browser is actually
 // running — a stale cached admin.js would otherwise report the live
 // server's version instead of its own, defeating the point of the check.
-const UI_BUILD = "1.2.0";
+const UI_BUILD = "1.2.1";
 
 // ───────────── UI Elements ─────────────
 const scanBtn = document.getElementById("scanBtn");
@@ -77,6 +77,8 @@ ws.onmessage = (e) => {
         currentConnectedDevice = msg.addr;
         log(`✅ Device connected: ${name} (${model}${apiVer})`);
         localStorage.setItem("lastDeviceAddr", msg.addr);
+        if (msg.paired !== undefined && msg.paired !== null)
+          markPaired(msg.addr, msg.paired);
         updateDeviceDropdown(msg.addr, name);
       }, 500);
       break;
@@ -122,9 +124,10 @@ ws.onmessage = (e) => {
 
     case "PAIRING_RESULT":
       hidePairingPrompt();
-      if (msg.ok)
+      if (msg.ok) {
         log(`✅ Paired with ${msg.name || msg.addr} (${msg.status})`);
-      else log(`❌ Pairing failed: ${msg.message}`);
+        markPaired(msg.addr, true); // drop the "not paired" tag immediately
+      } else log(`❌ Pairing failed: ${msg.message}`);
       break;
 
     case "PAIRING_CANCELLED":
@@ -145,6 +148,7 @@ ws.onmessage = (e) => {
 
     case "UNPAIRED":
       log(`🔓 Forgot pairing for ${msg.name || msg.addr}`);
+      markPaired(msg.addr, false);
       break;
 
     case "ALIAS_UPDATE": {
@@ -206,8 +210,26 @@ ws.onmessage = (e) => {
 };
 
 // ───────────── Device Controls ─────────────
-// Timers seen in the most recent scan, address -> {name, paired}.
+// Timers seen in the most recent scan, keyed by UPPERCASE address so that
+// state arriving later (pairing results, connects) matches regardless of how
+// each source spells the address. Each entry keeps its original `address`
+// for use as the option value.
 let scannedDevices = new Map();
+
+const addrKey = (addr) => (addr || "").toUpperCase();
+
+/**
+ * Record a timer's bond state, so the list stops saying "not paired" the
+ * moment pairing succeeds instead of waiting for the next scan.
+ */
+function markPaired(addr, paired) {
+  if (!addr) return;
+  const key = addrKey(addr);
+  const entry = scannedDevices.get(key);
+  if (entry) entry.paired = paired;
+  else scannedDevices.set(key, { address: addr, name: null, paired });
+  renderDeviceOptions();
+}
 
 // The dropdown lists scanned timers *and* every timer that has been named,
 // so saved ones can be identified and renamed without scanning first — a
@@ -237,8 +259,8 @@ function renderDeviceOptions() {
     deviceSelect.appendChild(opt);
   };
 
-  scannedDevices.forEach((d, addr) =>
-    addOption(addr, d.name, { paired: d.paired, seen: true })
+  scannedDevices.forEach((d) =>
+    addOption(d.address, d.name, { paired: d.paired, seen: true })
   );
   Object.keys(knownAliases).forEach((addr) =>
     addOption(addr, null, { paired: null, seen: false })
@@ -256,8 +278,12 @@ async function scanDevices() {
 
   scannedDevices = new Map();
   data.devices.forEach((d) => {
-    if (d.alias) knownAliases[d.address.toUpperCase()] = d.alias;
-    scannedDevices.set(d.address, { name: d.name, paired: d.paired });
+    if (d.alias) knownAliases[addrKey(d.address)] = d.alias;
+    scannedDevices.set(addrKey(d.address), {
+      address: d.address,
+      name: d.name,
+      paired: d.paired,
+    });
   });
 
   renderDeviceOptions();
@@ -582,8 +608,17 @@ async function pairDevice() {
       body: JSON.stringify({ address: addr, name: selected ? selected.dataset.name : null }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) log(`❌ Pairing failed: ${data.detail || `HTTP ${res.status}`}`);
-    else if (data.status === "already_paired") log("ℹ️ This timer is already paired.");
+    if (!res.ok) {
+      log(`❌ Pairing failed: ${data.detail || `HTTP ${res.status}`}`);
+      return;
+    }
+    if (data.status === "already_paired") log("ℹ️ This timer was already paired.");
+    markPaired(addr, true);
+
+    // The server connects straight after pairing; report if that part failed
+    // so a half-finished result is never mistaken for success.
+    if (data.connected === false)
+      log(`⚠️ Paired, but connecting failed: ${data.connect_error || "unknown error"}`);
   } catch (e) {
     log("❌ Error pairing: " + e.message);
   }
@@ -805,8 +840,9 @@ function updateDeviceDropdown(addr, name = null) {
   if (!addr) return;
   // Fold it into the known list rather than replacing the list, so other
   // scanned and saved timers stay selectable.
-  const existing = scannedDevices.get(addr) || {};
-  scannedDevices.set(addr, {
+  const existing = scannedDevices.get(addrKey(addr)) || {};
+  scannedDevices.set(addrKey(addr), {
+    address: existing.address || addr,
     name: name || existing.name || null,
     paired: existing.paired ?? null,
   });
