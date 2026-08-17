@@ -1,6 +1,8 @@
-// Bump on every UI change. Logged at startup so a stale cached script is
-// obvious at a glance instead of looking like a dead button.
-const UI_BUILD = "1.1.1";
+// Bump alongside __version__ in server.py on every release. Baked into this
+// file (not fetched) so it reflects whatever JS the browser is actually
+// running — a stale cached admin.js would otherwise report the live
+// server's version instead of its own, defeating the point of the check.
+const UI_BUILD = "1.2.0";
 
 // ───────────── UI Elements ─────────────
 const scanBtn = document.getElementById("scanBtn");
@@ -559,6 +561,17 @@ fetch("/get_title")
 fetch("/status")
   .then((r) => r.json())
   .then((data) => {
+    // Confirm the JS the browser is running actually matches the server it
+    // talks to, rather than trusting the console.log at startup blindly.
+    if (data.version && data.version !== UI_BUILD) {
+      log(
+        `⚠️ Version mismatch: this page is build ${UI_BUILD} but the server ` +
+          `is v${data.version} — hard-refresh (Ctrl+F5) to load the current UI.`
+      );
+    } else if (data.version) {
+      log(`✅ UI build ${UI_BUILD} matches the server.`);
+    }
+
     // a ceremony may have been raised before this page was opened
     if (data.pending_pairing) showPairingPrompt(data.pending_pairing);
     if (data.connected && data.devices.length > 0) {

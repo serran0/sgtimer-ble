@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import configparser
 import asyncio
@@ -820,6 +820,7 @@ async def get_status():
         "connected": any(d["connected"] for d in connected_devices),
         "devices": connected_devices,
         "pending_pairing": pairing_mgr.pending(),
+        "version": __version__,
     }
 
 # ─────────────────────────────────────────────
