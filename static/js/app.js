@@ -1,3 +1,6 @@
+// Bump alongside __version__ in server.py on every release.
+const UI_BUILD = "1.2.0";
+
 // ───────────── WebSocket Setup ─────────────
 const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws";
 const ws = new WebSocket(wsUrl);
@@ -61,6 +64,28 @@ function restoreOverlayDisplay() {
   updateStatsDisplay();
   restoreShotList();
   console.log("Session resumed — restored overlay from memory.");
+}
+
+// ───────────── Appearance ─────────────
+// A blank title is a deliberate choice, not missing data: hide the element
+// entirely so it does not occupy space at the top of the overlay.
+function applyTitle(title) {
+  const text = (title || "").trim();
+  titleDiv.textContent = text;
+  titleDiv.style.display = text ? "" : "none";
+}
+
+// Font scales arrive as percentages and drive the CSS custom properties.
+function applyDisplaySettings(settings) {
+  if (!settings) return;
+  const scale = (v) => (Number(v) > 0 ? Number(v) / 100 : 1);
+  const root = document.documentElement.style;
+  if (settings.title_scale !== undefined)
+    root.setProperty("--title-scale", scale(settings.title_scale));
+  if (settings.stats_scale !== undefined)
+    root.setProperty("--stats-scale", scale(settings.stats_scale));
+  if (settings.ticker_scale !== undefined)
+    root.setProperty("--ticker-scale", scale(settings.ticker_scale));
 }
 
 // ───────────── UI Helpers ─────────────
@@ -128,6 +153,7 @@ function restoreShotList() {
 
 // ───────────── On Load ─────────────
 (async () => {
+  console.log(`SG Timer display — UI build ${UI_BUILD}`);
   updateStatus(currentSessionState);
   updateStatsDisplay();
   restoreShotList();
@@ -151,12 +177,15 @@ function restoreShotList() {
   }
 })();
 
-// ───────────── Initial Title Load ─────────────
+// ───────────── Initial Title & Appearance Load ─────────────
 fetch("/get_title")
   .then(r => r.json())
-  .then(d => {
-    if (d.title) titleDiv.textContent = d.title;
-  });
+  .then(d => applyTitle(d.title));
+
+fetch("/display_settings")
+  .then(r => r.json())
+  .then(d => applyDisplaySettings(d.settings))
+  .catch(e => console.warn("Failed to load display settings:", e));
 
 // ───────────── WebSocket Connection Events ─────────────
 ws.onopen = async () => {
@@ -224,7 +253,11 @@ ws.onmessage = (e) => {
 
   switch (msg.type) {
     case "TITLE_UPDATE":
-      if (msg.title) titleDiv.textContent = msg.title;
+      applyTitle(msg.title);
+      break;
+
+    case "DISPLAY_SETTINGS":
+      applyDisplaySettings(msg.settings);
       break;
 
     case "SESSION_STARTED":

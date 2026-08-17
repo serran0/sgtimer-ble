@@ -18,6 +18,15 @@ const setTitleBtn = document.getElementById("setTitleBtn");
 const pairBtn = document.getElementById("pairBtn");
 const unpairBtn = document.getElementById("unpairBtn");
 const deviceHint = document.getElementById("deviceHint");
+const aliasInput = document.getElementById("aliasInput");
+const setAliasBtn = document.getElementById("setAliasBtn");
+const clearAliasBtn = document.getElementById("clearAliasBtn");
+const clearTitleBtn = document.getElementById("clearTitleBtn");
+const titleScale = document.getElementById("titleScale");
+const statsScale = document.getElementById("statsScale");
+const tickerScale = document.getElementById("tickerScale");
+const applySizesBtn = document.getElementById("applySizesBtn");
+const resetSizesBtn = document.getElementById("resetSizesBtn");
 const pairingOverlay = document.getElementById("pairingOverlay");
 const pairingDevice = document.getElementById("pairingDevice");
 const pairingHint = document.getElementById("pairingHint");
@@ -32,6 +41,8 @@ const PAGE_SIZE = 20;
 let currentConnectedDevice = null;
 let pendingPairing = null;
 let pairingTicker = null;
+let knownAliases = {};
+let sizeDefaults = { title_scale: 100, stats_scale: 100, ticker_scale: 100 };
 
 // ───────────── Logging Helper ─────────────
 function log(msg) {
@@ -136,6 +147,18 @@ ws.onmessage = (e) => {
       log(`🔓 Forgot pairing for ${msg.name || msg.addr}`);
       break;
 
+    case "ALIAS_UPDATE": {
+      const key = (msg.addr || "").toUpperCase();
+      if (msg.alias) knownAliases[key] = msg.alias;
+      else delete knownAliases[key];
+      renderDeviceOptions();
+      break;
+    }
+
+    case "DISPLAY_SETTINGS":
+      applySizeInputs(msg.settings);
+      break;
+
     case "ERROR":
       log(`❌ ${msg.message}`);
       break;
@@ -170,9 +193,10 @@ ws.onmessage = (e) => {
       break;
 
     case "TITLE_UPDATE":
-      if (msg.title && titleInput.value.trim() !== msg.title) {
+      // "" is a real title (meaning none), so compare without truthiness
+      if (msg.title !== undefined && titleInput.value.trim() !== msg.title) {
         titleInput.value = msg.title;
-        log(`📝 Title updated: ${msg.title}`);
+        log(msg.title ? `📝 Title updated: ${msg.title}` : "📝 Title cleared");
       }
       break;
 
@@ -182,21 +206,61 @@ ws.onmessage = (e) => {
 };
 
 // ───────────── Device Controls ─────────────
+// Timers seen in the most recent scan, address -> {name, paired}.
+let scannedDevices = new Map();
+
+// The dropdown lists scanned timers *and* every timer that has been named,
+// so saved ones can be identified and renamed without scanning first — a
+// timer already in a connection does not advertise and would otherwise
+// disappear from the list entirely.
+function renderDeviceOptions() {
+  const previous = deviceSelect.value || localStorage.getItem("lastDeviceAddr");
+  deviceSelect.innerHTML = "";
+  const listed = new Set();
+
+  const addOption = (addr, name, { paired, seen }) => {
+    const key = addr.toUpperCase();
+    if (listed.has(key)) return;
+    listed.add(key);
+
+    const alias = aliasFor(addr);
+    // Lead with the operator's name; keep the BLE name so a renamed timer is
+    // still identifiable against the hardware in front of you.
+    const shown = alias ? `${alias} — ${name || "Unknown"}` : name || "Unknown";
+    const pairState = paired === false ? " 🔐 not paired" : "";
+    const seenState = seen ? "" : " · saved";
+
+    const opt = document.createElement("option");
+    opt.value = addr;
+    opt.textContent = `${shown} (${addr})${pairState}${seenState}`;
+    opt.dataset.name = name || "";
+    deviceSelect.appendChild(opt);
+  };
+
+  scannedDevices.forEach((d, addr) =>
+    addOption(addr, d.name, { paired: d.paired, seen: true })
+  );
+  Object.keys(knownAliases).forEach((addr) =>
+    addOption(addr, null, { paired: null, seen: false })
+  );
+
+  if (previous) deviceSelect.value = previous;
+  refreshAliasInput();
+  updateDeviceButtons();
+}
+
 async function scanDevices() {
   log("📡 Scanning for compatible devices...");
   const res = await fetch("/devices");
   const data = await res.json();
-  deviceSelect.innerHTML = "";
+
+  scannedDevices = new Map();
   data.devices.forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d.address;
-    // paired is null when the platform cannot report bond state
-    const pairState = d.paired === false ? " 🔐 not paired" : "";
-    opt.textContent = `${d.name || "Unknown"} (${d.address})${pairState}`;
-    opt.dataset.name = d.name || "";
-    deviceSelect.appendChild(opt);
+    if (d.alias) knownAliases[d.address.toUpperCase()] = d.alias;
+    scannedDevices.set(d.address, { name: d.name, paired: d.paired });
   });
-  updateDeviceButtons();
+
+  renderDeviceOptions();
   log(`Found ${data.devices.length} device(s).`);
   if (!data.devices.length)
     log("⚠️ No timers found — switch the timer on and scan again.");
@@ -280,6 +344,127 @@ async function disconnectDevice() {
   localStorage.removeItem("lastDeviceAddr");
   updateDeviceButtons();
 }
+
+// ───────────── Device Names (aliases) ─────────────
+// Timers all advertise as SG-SST4…, so a serial number is the only thing
+// separating them by default. An alias is stored on the server, not in this
+// browser, so every screen and machine sees the same name.
+function aliasFor(addr) {
+  return addr ? knownAliases[addr.toUpperCase()] || null : null;
+}
+
+function labelFor(addr, name) {
+  return aliasFor(addr) || name || addr;
+}
+
+function selectedAddress() {
+  return deviceSelect.value || localStorage.getItem("lastDeviceAddr") || null;
+}
+
+function refreshAliasInput() {
+  const addr = selectedAddress();
+  aliasInput.value = aliasFor(addr) || "";
+  aliasInput.placeholder = addr
+    ? "e.g. Stage 3 — left bay"
+    : "Select a timer first";
+}
+
+async function loadAliases() {
+  try {
+    const res = await fetch("/aliases");
+    const data = await res.json();
+    knownAliases = data.aliases || {};
+    renderDeviceOptions();
+  } catch (e) {
+    log("⚠️ Could not load saved timer names: " + e.message);
+  }
+}
+
+async function saveAlias(alias) {
+  const addr = selectedAddress();
+  if (!addr) {
+    log("⚠️ No timer selected — press 🔍 Scan and pick one first.");
+    return;
+  }
+  try {
+    const res = await fetch("/alias", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: addr, alias }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      log(`⚠️ Could not save the name: ${data.detail || `HTTP ${res.status}`}`);
+      return;
+    }
+    log(
+      data.alias
+        ? `💾 Named ${addr} "${data.alias}"`
+        : `💾 Cleared the saved name for ${addr}`
+    );
+  } catch (e) {
+    log("❌ Error saving the name: " + e.message);
+  }
+}
+
+// ───────────── Display Text Size ─────────────
+async function loadDisplaySettings() {
+  try {
+    const res = await fetch("/display_settings");
+    const data = await res.json();
+    if (data.defaults) sizeDefaults = data.defaults;
+    applySizeInputs(data.settings);
+  } catch (e) {
+    log("⚠️ Could not load display sizes: " + e.message);
+  }
+}
+
+function applySizeInputs(settings) {
+  if (!settings) return;
+  titleScale.value = settings.title_scale;
+  statsScale.value = settings.stats_scale;
+  tickerScale.value = settings.ticker_scale;
+}
+
+async function saveDisplaySettings(settings) {
+  try {
+    const res = await fetch("/display_settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      log(`⚠️ Could not apply sizes: ${data.detail || `HTTP ${res.status}`}`);
+      return;
+    }
+    applySizeInputs(data.settings);
+    log(
+      `🔠 Display sizes applied — title ${data.settings.title_scale}%, ` +
+        `stats ${data.settings.stats_scale}%, ticker ${data.settings.ticker_scale}%`
+    );
+  } catch (e) {
+    log("❌ Error applying sizes: " + e.message);
+  }
+}
+
+setAliasBtn.addEventListener("click", () => saveAlias(aliasInput.value.trim()));
+clearAliasBtn.addEventListener("click", () => {
+  aliasInput.value = "";
+  saveAlias("");
+});
+aliasInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveAlias(aliasInput.value.trim());
+});
+
+applySizesBtn.addEventListener("click", () =>
+  saveDisplaySettings({
+    title_scale: titleScale.value,
+    stats_scale: statsScale.value,
+    ticker_scale: tickerScale.value,
+  })
+);
+resetSizesBtn.addEventListener("click", () => saveDisplaySettings(sizeDefaults));
 
 // ───────────── Pairing ─────────────
 // The timer asks for the same confirmation on its own screen; this dialog is
@@ -366,9 +551,15 @@ function updateDeviceButtons() {
   // A remembered address is not a connection: say which one this is, so the
   // hint can never read as "connected" while the server says otherwise.
   if (currentConnectedDevice) {
-    deviceHint.textContent = `Connected: ${currentConnectedDevice}`;
+    const named = aliasFor(currentConnectedDevice);
+    deviceHint.textContent = named
+      ? `Connected: ${named} (${currentConnectedDevice})`
+      : `Connected: ${currentConnectedDevice}`;
   } else if (addr) {
-    deviceHint.textContent = `Selected: ${addr} — not connected`;
+    const named = aliasFor(addr);
+    deviceHint.textContent = named
+      ? `Selected: ${named} (${addr}) — not connected`
+      : `Selected: ${addr} — not connected`;
   } else {
     deviceHint.textContent = "No timer selected — press 🔍 Scan";
   }
@@ -474,9 +665,14 @@ async function loadSessions(append = false) {
   loadMoreBtn.style.display = list.length === PAGE_SIZE ? "inline-block" : "none";
 }
 
-deviceSelect.addEventListener("change", updateDeviceButtons);
+deviceSelect.addEventListener("change", () => {
+  updateDeviceButtons();
+  refreshAliasInput();
+});
 updateDeviceButtons();
 log(`🧭 Admin UI build ${UI_BUILD}`);
+loadAliases();
+loadDisplaySettings();
 
 // ───────────── Expand/Collapse Session Details ─────────────
 async function toggleSessionDetails(card, sessId) {
@@ -535,27 +731,36 @@ async function toggleSessionDetails(card, sessId) {
 }
 
 // ───────────── Title Management ─────────────
-setTitleBtn.addEventListener("click", async () => {
-  const newTitle = titleInput.value.trim();
-  if (!newTitle) return;
+// A blank title is a valid choice — it hides the title on the overlay — so
+// this no longer refuses to send an empty value.
+async function setTitle(newTitle) {
   try {
     const res = await fetch("/set_title", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: newTitle }),
     });
-    if (res.ok) log(`✅ Title updated: ${newTitle}`);
-    else log("⚠️ Failed to update title");
+    if (!res.ok) {
+      log("⚠️ Failed to update title");
+      return;
+    }
+    log(newTitle ? `✅ Title updated: ${newTitle}` : "✅ Title cleared — the overlay shows no title.");
   } catch (e) {
     log("Error setting title: " + e.message);
   }
+}
+
+setTitleBtn.addEventListener("click", () => setTitle(titleInput.value.trim()));
+clearTitleBtn.addEventListener("click", () => {
+  titleInput.value = "";
+  setTitle("");
 });
 
 // ───────────── Auto-Fill Title & Connection Status ─────────────
 fetch("/get_title")
   .then((r) => r.json())
   .then((d) => {
-    if (d.title) titleInput.value = d.title;
+    if (d.title !== undefined) titleInput.value = d.title;
   });
 
 fetch("/status")
@@ -598,12 +803,16 @@ fetch("/status")
 // ───────────── Helper: Update Dropdown ─────────────
 function updateDeviceDropdown(addr, name = null) {
   if (!addr) return;
-  deviceSelect.innerHTML = "";
-  const opt = document.createElement("option");
-  opt.value = addr;
-  opt.textContent = `${name || "Connected Device"} (${addr})`;
-  deviceSelect.appendChild(opt);
+  // Fold it into the known list rather than replacing the list, so other
+  // scanned and saved timers stay selectable.
+  const existing = scannedDevices.get(addr) || {};
+  scannedDevices.set(addr, {
+    name: name || existing.name || null,
+    paired: existing.paired ?? null,
+  });
+  renderDeviceOptions();
   deviceSelect.value = addr;
+  refreshAliasInput();
   updateDeviceButtons();
 }
 

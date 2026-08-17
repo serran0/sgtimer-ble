@@ -22,6 +22,13 @@
     <span id="deviceHint" class="device-hint"></span>
   </div>
 
+  <div id="aliasRow" class="alias-row">
+    <label for="aliasInput">Timer name</label>
+    <input id="aliasInput" type="text" placeholder="e.g. Stage 3 — left bay" maxlength="60">
+    <button id="setAliasBtn" class="btn">💾 Save name</button>
+    <button id="clearAliasBtn" class="btn btn-secondary">Clear</button>
+  </div>
+
   <!-- Pairing confirmation: mirrors the confirmation shown on the timer -->
   <div id="pairingOverlay" class="pairing-overlay" hidden>
     <div class="pairing-dialog" role="dialog" aria-modal="true" aria-labelledby="pairingTitle">
@@ -43,8 +50,34 @@
  <section id="titleSection">
   <h2>Main Title</h2>
   <div class="title-row">
-    <input id="titleInput" type="text" placeholder="Enter title...">
+    <input id="titleInput" type="text" placeholder="Leave blank for no title">
     <button id="setTitleBtn" class="btn">Set Title</button>
+    <button id="clearTitleBtn" class="btn btn-secondary">Clear</button>
+  </div>
+</section>
+
+<section id="displaySection">
+  <h2>Display Text Size</h2>
+  <p class="section-note">
+    Percentage of the default size. The overlay stays scaled to the screen it
+    is shown on, so these work on any resolution.
+  </p>
+  <div class="size-grid">
+    <label for="titleScale">Main title</label>
+    <input id="titleScale" class="size-input" type="number" min="25" max="400" step="5">
+    <span class="size-unit">%</span>
+
+    <label for="statsScale">Session stats</label>
+    <input id="statsScale" class="size-input" type="number" min="25" max="400" step="5">
+    <span class="size-unit">%</span>
+
+    <label for="tickerScale">Shot / split ticker</label>
+    <input id="tickerScale" class="size-input" type="number" min="25" max="400" step="5">
+    <span class="size-unit">%</span>
+  </div>
+  <div class="size-actions">
+    <button id="applySizesBtn" class="btn">Apply sizes</button>
+    <button id="resetSizesBtn" class="btn btn-secondary">Reset to default</button>
   </div>
 </section>
 

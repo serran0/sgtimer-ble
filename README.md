@@ -55,6 +55,31 @@ code), `PAIRING_RESULT`, `PAIRING_CANCELLED`, `PAIRING_REQUIRED` and
 `UNPAIRED`. A pending request is replayed to newly connected clients, so
 reloading the admin page mid-ceremony does not lose the prompt.
 
+## Naming timers
+
+Every SG timer advertises as `SG-SST4…` plus a serial number, which makes a
+rack of them hard to tell apart. The admin panel's **Timer name** field sets
+an alias per Bluetooth address, stored server-side in `aliases.json` next to
+the exe — so the name is the same on every browser and machine, and shows up
+in the device list, the connection hint and the console.
+
+Named timers stay listed in the dropdown (marked `· saved`) even when they
+are not currently advertising, so they can be identified and renamed without
+scanning first.
+
+## Display appearance
+
+**Main Title** may be left blank — the overlay then hides the title entirely
+rather than reserving space for it. Use **Clear** or just submit an empty
+field.
+
+**Display Text Size** sets three independent scales: the main title, the
+session stats block, and the shot/split ticker. They are percentages of the
+stylesheet's own sizes, which are `vw`-based — so the overlay keeps scaling
+with whatever screen it is projected onto instead of being pinned to one
+resolution. Settings live in `display.json` next to the exe, are shared by
+every connected display, and apply live over the websocket.
+
 ## Overlay inactivity clear (display page)
 
 `index.html` normally keeps showing a session's stats until the next

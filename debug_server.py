@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "0.8.3"
+__version__ = "1.2.0"
 
 import asyncio
 import time

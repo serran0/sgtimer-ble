@@ -3,6 +3,7 @@ __version__ = "1.2.0"
 
 import configparser
 import asyncio
+import json
 import time
 import os
 import sys
@@ -30,6 +31,8 @@ else:
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ARCHIVE_ROOT = os.path.join(DATA_DIR, "archive")
 TITLE_FILE = os.path.join(BASE_DIR, "title.txt")
+ALIASES_FILE = os.path.join(BASE_DIR, "aliases.json")
+DISPLAY_FILE = os.path.join(BASE_DIR, "display.json")
 
 # Create base folders on startup
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -86,6 +89,54 @@ NAME_PREFIX = "SG-SST"
 CONNECT_ATTEMPTS = 4
 CONNECT_RETRY_DELAY = 2.0
 
+# ─────────────────────────────────────────────
+# Device aliases and display settings
+# ─────────────────────────────────────────────
+# Both live next to the exe alongside title.txt, so they survive upgrades and
+# are shared by every browser that opens the UI — a font size or a timer name
+# set on the operator's laptop still applies to the display screen.
+
+# Font sizes are stored as a percentage of the stylesheet's own vw-based
+# sizes rather than absolute values: the overlay has to stay readable on
+# whatever screen it is projected onto, and a fixed px size would break that.
+DEFAULT_DISPLAY = {"title_scale": 100, "stats_scale": 100, "ticker_scale": 100}
+SCALE_MIN, SCALE_MAX = 25, 400
+
+
+def _load_json(path: str, default: dict) -> dict:
+    try:
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        print(f"⚠️ Could not read {os.path.basename(path)}: {e}")
+    return dict(default)
+
+
+def _save_json(path: str, data: dict) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"⚠️ Could not write {os.path.basename(path)}: {e}")
+
+
+aliases: Dict[str, str] = _load_json(ALIASES_FILE, {})
+display_settings: Dict[str, int] = {**DEFAULT_DISPLAY, **_load_json(DISPLAY_FILE, {})}
+
+
+def alias_for(addr: str) -> Optional[str]:
+    """The operator's name for a timer, if one was set."""
+    return aliases.get((addr or "").upper()) or None
+
+
+def display_name(addr: str, name: Optional[str]) -> str:
+    """Alias if there is one, otherwise the BLE name."""
+    return alias_for(addr) or name or addr
+
+
 EVENT_TYPES = {
     0x00: "SESSION_STARTED",
     0x01: "SESSION_SUSPENDED",
@@ -117,11 +168,12 @@ class WsHub:
     async def connect(self, ws: WebSocket):
         await ws.accept()
         self.clients.add(ws)
-        # send current title
+        # send current title (may legitimately be blank) and appearance
         if os.path.exists(TITLE_FILE):
-            with open(TITLE_FILE) as f:
+            with open(TITLE_FILE, encoding="utf-8") as f:
                 title = f.read().strip()
                 await ws.send_json({"type": "TITLE_UPDATE", "title": title})
+        await ws.send_json({"type": "DISPLAY_SETTINGS", "settings": display_settings})
 
         # send retained session state if any
         if session_state.get("sess_id"):
@@ -270,7 +322,13 @@ class DeviceManager:
         self.paired: Optional[bool] = None
         self.last_error: Optional[str] = None
         self.ble_device = None
+        self.alias = alias_for(addr)
         self._pairing_hint_sent = False
+
+    @property
+    def label(self) -> str:
+        """What to call this timer in logs and broadcasts."""
+        return self.alias or self.name
 
     def _get_model(self):
         """Extract model type from BLE name pattern."""
@@ -288,7 +346,7 @@ class DeviceManager:
         await broadcast({
             "type": "PAIRING_STARTED",
             "addr": self.addr,
-            "name": self.name,
+            "name": self.label,
             "model": self.model,
         })
         try:
@@ -299,7 +357,7 @@ class DeviceManager:
                 "type": "PAIRING_RESULT",
                 "ok": False,
                 "addr": self.addr,
-                "name": self.name,
+                "name": self.label,
                 "message": str(e),
             })
             raise
@@ -311,7 +369,7 @@ class DeviceManager:
             "type": "PAIRING_RESULT",
             "ok": True,
             "addr": self.addr,
-            "name": self.name,
+            "name": self.label,
             "status": result["status"],
             "detail": result.get("detail"),
         })
@@ -384,7 +442,7 @@ class DeviceManager:
                 await broadcast({
                     "type": "CONNECT_RETRY",
                     "addr": self.addr,
-                    "name": self.name,
+                    "name": self.label,
                     "attempt": attempt,
                     "attempts": attempts,
                     "message": str(e),
@@ -445,7 +503,7 @@ class DeviceManager:
             await broadcast({
                 "type": "DEVICE_CONNECTED",
                 "addr": self.addr,
-                "name": self.name,
+                "name": self.label,
                 "model": self.model,
                 "api_version": self.api_version,
                 "paired": self.paired,
@@ -506,7 +564,7 @@ class DeviceManager:
         await broadcast({
             "type": "DEVICE_DISCONNECTED" if not still_connected else "ERROR",
             "addr": self.addr,
-            "name": self.name,
+            "name": self.label,
             "model": self.model,
             "api_version": self.api_version,
             "message": "Disconnect did not take effect — the timer still "
@@ -525,7 +583,7 @@ class DeviceManager:
                         "type": "WATCHDOG",
                         "status": "disconnected",
                         "addr": self.addr,
-                        "name": self.name,
+                        "name": self.label,
                         "model": self.model,
                         "api_version": self.api_version,
                     })
@@ -538,7 +596,7 @@ class DeviceManager:
                                 "type": "WATCHDOG",
                                 "status": "reconnected",
                                 "addr": self.addr,
-                                "name": self.name,
+                                "name": self.label,
                                 "model": self.model,
                                 "api_version": self.api_version,
                             })
@@ -549,7 +607,7 @@ class DeviceManager:
                             await broadcast({
                                 "type": "PAIRING_REQUIRED",
                                 "addr": self.addr,
-                                "name": self.name,
+                                "name": self.label,
                                 "message": "The timer no longer accepts this "
                                 "connection — enable pairing mode on the timer "
                                 "and press Pair.",
@@ -559,7 +617,7 @@ class DeviceManager:
                             "type": "WATCHDOG",
                             "status": f"retry_failed:{e}",
                             "addr": self.addr,
-                            "name": self.name,
+                            "name": self.label,
                         })
             except asyncio.CancelledError:
                 break
@@ -568,7 +626,7 @@ class DeviceManager:
                     "type": "WATCHDOG",
                     "status": f"error:{e}",
                     "addr": self.addr,
-                    "name": self.name,
+                    "name": self.label,
                 })
 
     async def handle_event(self, _h, data: bytearray):
@@ -678,6 +736,8 @@ async def list_devices():
             dm = devices.get(d.address)
             results.append({
                 "name": d.name,
+                "alias": alias_for(d.address),
+                "label": display_name(d.address, d.name),
                 "address": d.address,
                 "model": model,
                 "paired": dm.paired if dm else None,
@@ -702,6 +762,8 @@ async def connect_device(body: dict):
         "status": "connected" if ok else "failed",
         "address": addr,
         "name": dm.name,
+        "alias": dm.alias,
+        "label": dm.label,
         "model": dm.model,
         "api_version": dm.api_version,
         "paired": dm.paired,
@@ -783,23 +845,91 @@ async def disconnect_device(body: dict):
 # ─────────────────────────────────────────────
 @app.get("/get_title")
 def get_title():
-    """Return current saved title."""
+    """Return current saved title. An empty string is a valid title."""
     if not os.path.exists(TITLE_FILE):
         return {"title": "SG Timer"}
-    with open(TITLE_FILE) as f:
+    with open(TITLE_FILE, encoding="utf-8") as f:
         title = f.read().strip()
     return {"title": title}
 
 @app.post("/set_title")
 async def set_title(body: dict):
-    """Set and broadcast new competition title."""
-    title = body.get("title", "").strip()
-    if not title:
-        raise HTTPException(400, "Missing title")
-    with open(TITLE_FILE, "w") as f:
+    """Set and broadcast the competition title.
+
+    A blank title is allowed and means "show no title at all" — the display
+    hides the element rather than reserving space for it.
+    """
+    title = (body.get("title") or "").strip()
+    with open(TITLE_FILE, "w", encoding="utf-8") as f:
         f.write(title)
     await broadcast({"type": "TITLE_UPDATE", "title": title})
     return {"status": "ok", "title": title}
+
+
+# ─────────────────────────────────────────────
+# Display appearance
+# ─────────────────────────────────────────────
+@app.get("/display_settings")
+def get_display_settings():
+    """Font scales currently applied to the display overlay."""
+    return {"settings": display_settings, "defaults": DEFAULT_DISPLAY}
+
+
+@app.post("/display_settings")
+async def set_display_settings(body: dict):
+    """Update one or more font scales, as a percentage of the default size."""
+    updated = dict(display_settings)
+    for key in DEFAULT_DISPLAY:
+        if key not in body or body[key] is None:
+            continue
+        try:
+            value = int(round(float(body[key])))
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"{key} must be a number")
+        if not SCALE_MIN <= value <= SCALE_MAX:
+            raise HTTPException(
+                400, f"{key} must be between {SCALE_MIN} and {SCALE_MAX}"
+            )
+        updated[key] = value
+
+    display_settings.update(updated)
+    _save_json(DISPLAY_FILE, display_settings)
+    await broadcast({"type": "DISPLAY_SETTINGS", "settings": display_settings})
+    return {"status": "ok", "settings": display_settings}
+
+
+# ─────────────────────────────────────────────
+# Device aliases
+# ─────────────────────────────────────────────
+@app.get("/aliases")
+def get_aliases():
+    """Every saved timer name, keyed by address."""
+    return {"aliases": aliases}
+
+
+@app.post("/alias")
+async def set_alias(body: dict):
+    """Name a timer, or clear the name by sending an empty string."""
+    addr = (body.get("address") or "").strip().upper()
+    if not addr:
+        raise HTTPException(400, "Missing address")
+    alias = (body.get("alias") or "").strip()
+
+    if alias:
+        aliases[addr] = alias
+    else:
+        aliases.pop(addr, None)
+    _save_json(ALIASES_FILE, aliases)
+
+    # Keep any live manager's display name in step with the new alias.
+    dm = devices.get(addr) or next(
+        (d for a, d in devices.items() if a.upper() == addr), None
+    )
+    if dm:
+        dm.alias = alias or None
+
+    await broadcast({"type": "ALIAS_UPDATE", "addr": addr, "alias": alias or None})
+    return {"status": "ok", "address": addr, "alias": alias or None}
 
 @app.get("/status")
 async def get_status():
@@ -810,6 +940,8 @@ async def get_status():
             {
                 "address": addr,
                 "name": dm.name,
+                "alias": dm.alias,
+                "label": dm.label,
                 "model": dm.model,
                 "api_version": dm.api_version,
                 "connected": bool(dm.client and dm.client.is_connected),

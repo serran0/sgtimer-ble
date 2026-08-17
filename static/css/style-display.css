@@ -1,4 +1,13 @@
 /* ───────────── Global ───────────── */
+/* Font scales set from the admin panel. They multiply the vw-based sizes
+   below rather than replacing them, so the overlay keeps scaling with the
+   screen it is projected onto instead of being pinned to one resolution. */
+:root {
+  --title-scale: 1;
+  --stats-scale: 1;
+  --ticker-scale: 1;
+}
+
 body {
   background-color: rgba(0, 0, 0, 0);
   color: #fff;
@@ -22,7 +31,7 @@ body {
   top: 15px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 2.8vw;
+  font-size: calc(2.8vw * var(--title-scale));
   font-weight: bold;
 }
 
@@ -56,7 +65,7 @@ body {
 }
 
 #sessionInfo div {
-  font-size: 1.6vw;
+  font-size: calc(1.6vw * var(--stats-scale));
   font-weight: 700;
   color: #fff;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.85);
@@ -111,7 +120,7 @@ body {
 
 
 .shot-line {
-  font-size: 2.2vw;
+  font-size: calc(2.2vw * var(--ticker-scale));
   font-weight: 700;
   color: #fff;
   opacity: 1;
@@ -119,7 +128,7 @@ body {
 }
 
 .split-line {
-  font-size: 1.3vw;
+  font-size: calc(1.3vw * var(--ticker-scale));
   font-weight: 700;
   color: #e6e6e6;
   opacity: 1;
