@@ -24,7 +24,9 @@ Everything is written to diagnose.log as well as the console.
 """
 
 import asyncio
+import json
 import logging
+import os
 import sys
 import traceback
 
@@ -121,10 +123,27 @@ async def main() -> int:
         say("  A timer that is already in a connection does not advertise.")
         say("  If it is switched on and near, something is holding its link.")
 
+    # A timer holding a connection does not advertise — which is precisely the
+    # case worth diagnosing, so fall back to a known address rather than
+    # giving up exactly when the interesting fault is present.
     target_addr = wanted or (next(iter(found)) if found else None)
+    if not target_addr:
+        for path in ("aliases.json", os.path.join(os.path.dirname(__file__), "aliases.json")):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    saved = list(json.load(f).keys())
+                if saved:
+                    target_addr = saved[0]
+                    say(f"\n  Nothing advertising — using the saved timer {target_addr}")
+                    say("  (this is expected when the timer is holding a connection)")
+                    break
+            except Exception:
+                continue
+
     ble_device = found.get(target_addr) if target_addr else None
     if not target_addr:
-        say("\nNothing to test. Pass an address explicitly to continue.")
+        say("\nNothing to test and no saved timer to fall back on.")
+        say("Re-run with the address, e.g.:  python diagnose.py D0:41:74:BF:95:E9")
         return 1
 
     say(f"\n  target: {target_addr}"

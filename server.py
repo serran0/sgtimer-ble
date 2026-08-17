@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 import configparser
 import asyncio
@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from bleak import BleakScanner, BleakClient
 from sessions_api import router as sessions_router
-from pairing import PairingManager, PairingError, pairing_required
+from pairing import PairingManager, PairingError, pairing_required, _is_connected
 
 # ─────────────────────────────────────────────
 # Cross-platform path setup (supports PyInstaller)
@@ -596,11 +596,9 @@ class DeviceManager:
         # Two distinct facts: whether we still hold a GATT session, and
         # whether the radio link is up at all. Our session can be closed while
         # the timer still shows a client attached, so keep them apart.
-        self.os_link_held = bool(
-            os_status
-            and os_status.upper().endswith("CONNECTED")
-            and "DIS" not in os_status.upper()
-        )
+        # release_link polls for several seconds first, so this is a link that
+        # genuinely refused to drop rather than one still winding down.
+        self.os_link_held = _is_connected(os_status)
         if os_status:
             print(f"ℹ️ Windows reports the timer as {os_status} after disconnect")
         if self.os_link_held:

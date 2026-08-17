@@ -1,5 +1,5 @@
 // Bump alongside __version__ in server.py on every release.
-const UI_BUILD = "1.2.1";
+const UI_BUILD = "1.2.2";
 
 // ───────────── WebSocket Setup ─────────────
 const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws";

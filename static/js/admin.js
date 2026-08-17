@@ -2,7 +2,7 @@
 // file (not fetched) so it reflects whatever JS the browser is actually
 // running — a stale cached admin.js would otherwise report the live
 // server's version instead of its own, defeating the point of the check.
-const UI_BUILD = "1.2.1";
+const UI_BUILD = "1.2.2";
 
 // ───────────── UI Elements ─────────────
 const scanBtn = document.getElementById("scanBtn");

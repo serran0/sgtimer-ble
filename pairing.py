@@ -31,6 +31,12 @@ PAIRING_TIMEOUT = 60.0
 # to make the next connect fail; wait for the stack to drop it.
 RELEASE_SETTLE = 3.0
 
+# Windows drops an LE link lazily — a status read immediately after
+# disconnecting still shows the connection that is on its way out. Give it a
+# few seconds before concluding that something is really holding the link.
+RELEASE_CHECKS = 5
+RELEASE_CHECK_INTERVAL = 1.0
+
 IS_WINDOWS = sys.platform == "win32"
 
 # WinRT is imported the same way bleak does it, so PyInstaller picks up the
@@ -68,6 +74,15 @@ def _address_to_int(address: str) -> int:
 def _enum_name(value) -> str:
     """Best-effort readable name for a WinRT enum value."""
     return getattr(value, "name", None) or str(value)
+
+
+def _is_connected(status: Optional[str]) -> bool:
+    """True only for a live link.
+
+    Exact match on purpose: "DISCONNECTED".endswith("CONNECTED") is True, so
+    a suffix test reads every disconnected device as connected.
+    """
+    return bool(status) and status.strip().upper() == "CONNECTED"
 
 
 def pairing_required(err: Exception) -> bool:
@@ -246,20 +261,31 @@ class PairingManager:
         # instead of waiting for the collector to get round to it.
         gc.collect()
 
+        # Windows tears an LE link down lazily, so reading the status straight
+        # away reports the connection that is already on its way out. Poll
+        # instead, and disposing the probe handle each round matters as much
+        # as reading it: the handle would otherwise hold the link open itself.
         status = None
-        device = None
-        try:
-            device = await BluetoothLEDevice.from_bluetooth_address_async(
-                _address_to_int(addr)
-            )
-            if device is not None:
-                status = _enum_name(device.connection_status)
-        except Exception as e:
-            print(f"⚠️ Could not reach the Bluetooth stack to release: {e}")
-        finally:
-            self._close_device(device, "link release")
+        for attempt in range(RELEASE_CHECKS):
             device = None
-            gc.collect()
+            try:
+                device = await BluetoothLEDevice.from_bluetooth_address_async(
+                    _address_to_int(addr)
+                )
+                status = _enum_name(device.connection_status) if device else None
+            except Exception as e:
+                print(f"⚠️ Could not reach the Bluetooth stack to release: {e}")
+                status = None
+                break
+            finally:
+                self._close_device(device, "link release")
+                device = None
+                gc.collect()
+
+            if not _is_connected(status):
+                break
+            if attempt < RELEASE_CHECKS - 1:
+                await asyncio.sleep(RELEASE_CHECK_INTERVAL)
 
         if settle:
             await asyncio.sleep(settle)
