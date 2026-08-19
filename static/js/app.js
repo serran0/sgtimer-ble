@@ -14,6 +14,9 @@ const totalShotsDiv = document.getElementById("totalShots");
 const shotsDiv = document.getElementById("shots");
 const statusDiv = document.getElementById("status");
 const titleDiv = document.getElementById("competitionTitle");
+const displayEl = document.getElementById("display");
+const sessionInfoEl = document.getElementById("sessionInfo");
+const shotsContainerEl = document.getElementById("shotsContainer");
 
 // ───────────── State Variables ─────────────
 let sessId = localStorage.getItem("sessId") || null;
@@ -88,6 +91,120 @@ function applyDisplaySettings(settings) {
     root.setProperty("--ticker-scale", scale(settings.ticker_scale));
 }
 
+// ───────────── Box Positions (drag & drop) ─────────────
+// Each box keeps whatever position style-display.css gives it by default
+// until the operator drags it. A saved position is a plain percentage of
+// #display's own size — not pixels — so it means the same place on any
+// screen resolution, matching how the font scales above are percentages
+// rather than fixed sizes.
+const DRAGGABLE_BOXES = {
+  title: titleDiv,
+  stats: sessionInfoEl,
+  ticker: shotsContainerEl,
+};
+
+// Guards against a position broadcast (e.g. someone else pressing Reset)
+// fighting an in-progress local drag on the same box.
+let activeDragId = null;
+
+function applyBoxPosition(id, pos) {
+  const el = DRAGGABLE_BOXES[id];
+  if (!el || id === activeDragId) return;
+  if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+    el.style.left = `${pos.x}%`;
+    el.style.top = `${pos.y}%`;
+    el.style.right = "auto";
+    el.style.transform = "none";
+  } else {
+    // No saved entry: clear any inline override so the CSS default —
+    // whatever style-display.css says for this box — takes over again.
+    el.style.left = "";
+    el.style.top = "";
+    el.style.right = "";
+    el.style.transform = "";
+  }
+}
+
+function applyBoxPositions(positions) {
+  Object.keys(DRAGGABLE_BOXES).forEach((id) =>
+    applyBoxPosition(id, positions ? positions[id] : null)
+  );
+}
+
+async function saveBoxPosition(id, x, y) {
+  try {
+    await fetch(`/box_positions/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    });
+  } catch (e) {
+    console.warn("Failed to save box position:", e);
+  }
+}
+
+function initBoxDragging() {
+  Object.entries(DRAGGABLE_BOXES).forEach(([id, el]) => {
+    if (!el) return;
+    el.classList.add("draggable-box");
+
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    let boxW = 0, boxH = 0, containerW = 0, containerH = 0;
+
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+      const displayRect = displayEl.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left - displayRect.left;
+      startTop = rect.top - displayRect.top;
+      boxW = rect.width;
+      boxH = rect.height;
+      containerW = displayRect.width;
+      containerH = displayRect.height;
+      activeDragId = id;
+      el.classList.add("dragging");
+      el.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    el.addEventListener("pointermove", (e) => {
+      if (activeDragId !== id) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const left = Math.max(0, Math.min(startLeft + dx, containerW - boxW));
+      const top = Math.max(0, Math.min(startTop + dy, containerH - boxH));
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+      el.style.right = "auto";
+      el.style.transform = "none";
+    });
+
+    const endDrag = (e) => {
+      if (activeDragId !== id) return;
+      activeDragId = null;
+      el.classList.remove("dragging");
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+
+      // Re-measure and store as a percentage so it matches exactly what a
+      // reload (which applies percentages, not the drag's raw pixels) will
+      // render — no jump between "just dropped" and "just reloaded".
+      const displayRect = displayEl.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      const xPct = ((rect.left - displayRect.left) / displayRect.width) * 100;
+      const yPct = ((rect.top - displayRect.top) / displayRect.height) * 100;
+      el.style.left = `${xPct}%`;
+      el.style.top = `${yPct}%`;
+      saveBoxPosition(id, xPct, yPct);
+    };
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
+  });
+}
+
 // ───────────── UI Helpers ─────────────
 function updateStatus(state) {
   currentSessionState = state;
@@ -158,6 +275,7 @@ function restoreShotList() {
   updateStatsDisplay();
   restoreShotList();
   if (currentSessionState !== "LIVE") scheduleInactivityClear();
+  initBoxDragging(); // once — ws.onopen must not re-attach these on reconnect
 
   try {
     const res = await fetch("/status");
@@ -186,6 +304,11 @@ fetch("/display_settings")
   .then(r => r.json())
   .then(d => applyDisplaySettings(d.settings))
   .catch(e => console.warn("Failed to load display settings:", e));
+
+fetch("/box_positions")
+  .then(r => r.json())
+  .then(d => applyBoxPositions(d.positions))
+  .catch(e => console.warn("Failed to load box positions:", e));
 
 // ───────────── WebSocket Connection Events ─────────────
 ws.onopen = async () => {
@@ -258,6 +381,10 @@ ws.onmessage = (e) => {
 
     case "DISPLAY_SETTINGS":
       applyDisplaySettings(msg.settings);
+      break;
+
+    case "BOX_POSITIONS":
+      applyBoxPositions(msg.positions);
       break;
 
     case "SESSION_STARTED":

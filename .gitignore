@@ -36,3 +36,4 @@ compile-js.json
 # Runtime state written next to the exe (per-installation, not source)
 aliases.json
 display.json
+box_positions.json

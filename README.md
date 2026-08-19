@@ -107,6 +107,14 @@ with whatever screen it is projected onto instead of being pinned to one
 resolution. Settings live in `display.json` next to the exe, are shared by
 every connected display, and apply live over the websocket.
 
+**Box positions**: the title, session stats, and shot/split ticker boxes can
+be dragged directly on the overlay page to new positions. A drag saves as a
+percentage of the overlay's own size (same reasoning as the font scales
+above — a resolution-independent position), stored in `box_positions.json`
+and shared by every screen. **Reset Box Positions** in the admin panel
+clears the saved positions; a box with nothing saved uses whatever position
+is hardcoded in `style-display.css`, which is what "reset" restores.
+
 ## Overlay inactivity clear (display page)
 
 `index.html` normally keeps showing a session's stats until the next

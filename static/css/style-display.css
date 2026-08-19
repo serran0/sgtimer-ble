@@ -36,14 +36,16 @@ body {
 }
 
 /* ───────────── Connection Indicator ───────────── */
+/* Lives inside #statusRow now, sized against the status text rather than
+   pinned to a corner, so align-items: center keeps it vertically centered
+   against whatever line-height the status font ends up with. */
 .status-dot {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+  position: static;
   width: 18px;
   height: 18px;
   border-radius: 50%;
   border: 2px solid #fff;
+  flex-shrink: 0;
 }
 .status-dot.connected { background: #0f0; }
 .status-dot.disconnected { background: #f00; }
@@ -137,16 +139,36 @@ body {
 }
 
 /* ───────────── Session Status ───────────── */
-#status {
+#statusRow {
   position: absolute;
   bottom: 12px;
   left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#status {
   font-size: 1.8vw;
   font-weight: bold;
 }
 #status.live { color: #0f0; }
 #status.standby { color: #ff0; }
 #status.stopped { color: #f00; }
+
+/* ───────────── Draggable Boxes ───────────── */
+/* No idle-state chrome — this overlay is captured as-is by OBS/kiosk
+   browsers, so a border or highlight would show up on stream. Feedback only
+   appears once a drag actually starts. */
+.draggable-box {
+  cursor: grab;
+  touch-action: none;   /* let pointer events own the gesture, not scrolling */
+  user-select: none;
+}
+.draggable-box.dragging {
+  cursor: grabbing;
+  outline: 1px dashed rgba(255, 255, 255, 0.6);
+  outline-offset: 4px;
+}
 
 /* ───────────── Text Shadow for Contrast ───────────── */
 #display,

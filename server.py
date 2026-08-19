@@ -33,6 +33,7 @@ ARCHIVE_ROOT = os.path.join(DATA_DIR, "archive")
 TITLE_FILE = os.path.join(BASE_DIR, "title.txt")
 ALIASES_FILE = os.path.join(BASE_DIR, "aliases.json")
 DISPLAY_FILE = os.path.join(BASE_DIR, "display.json")
+BOX_POSITIONS_FILE = os.path.join(BASE_DIR, "box_positions.json")
 
 # Create base folders on startup
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -144,6 +145,15 @@ def _save_json(path: str, data: dict) -> None:
 aliases: Dict[str, str] = _load_json(ALIASES_FILE, {})
 display_settings: Dict[str, int] = {**DEFAULT_DISPLAY, **_load_json(DISPLAY_FILE, {})}
 
+# Custom drag positions for overlay boxes, keyed by box id. A box with no
+# entry here keeps using the position hardcoded in style-display.css — that
+# stylesheet is the "default" the reset button restores, so resetting is
+# just clearing this dict rather than needing to know what the CSS says.
+KNOWN_BOXES = {"title", "stats", "ticker"}
+box_positions: Dict[str, dict] = {
+    k: v for k, v in _load_json(BOX_POSITIONS_FILE, {}).items() if k in KNOWN_BOXES
+}
+
 
 def alias_for(addr: str) -> Optional[str]:
     """The operator's name for a timer, if one was set."""
@@ -192,6 +202,7 @@ class WsHub:
                 title = f.read().strip()
                 await ws.send_json({"type": "TITLE_UPDATE", "title": title})
         await ws.send_json({"type": "DISPLAY_SETTINGS", "settings": display_settings})
+        await ws.send_json({"type": "BOX_POSITIONS", "positions": box_positions})
 
         # send retained session state if any
         if session_state.get("sess_id"):
@@ -1051,6 +1062,49 @@ async def set_display_settings(body: dict):
     _save_json(DISPLAY_FILE, display_settings)
     await broadcast({"type": "DISPLAY_SETTINGS", "settings": display_settings})
     return {"status": "ok", "settings": display_settings}
+
+
+# ─────────────────────────────────────────────
+# Overlay box positions (drag & drop)
+# ─────────────────────────────────────────────
+@app.get("/box_positions")
+def get_box_positions():
+    """Custom positions currently applied to the overlay's draggable boxes."""
+    return {"positions": box_positions}
+
+
+@app.post("/box_positions/reset")
+async def reset_box_positions():
+    """Drop every custom position — the overlay reverts to its CSS defaults."""
+    box_positions.clear()
+    _save_json(BOX_POSITIONS_FILE, box_positions)
+    await broadcast({"type": "BOX_POSITIONS", "positions": box_positions})
+    return {"status": "ok", "positions": box_positions}
+
+
+@app.post("/box_positions/{box_id}")
+async def set_box_position(box_id: str, body: dict):
+    """Save where a box was dropped, as a percentage of the overlay's size.
+
+    Percentages rather than pixels for the same reason font sizes are
+    percentages: the overlay is shown at whatever resolution the display
+    happens to be, and a saved position has to mean the same place on all
+    of them.
+    """
+    if box_id not in KNOWN_BOXES:
+        raise HTTPException(404, f"Unknown box '{box_id}'")
+    try:
+        x = float(body.get("x"))
+        y = float(body.get("y"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "x and y must be numbers")
+    if not (0 <= x <= 100 and 0 <= y <= 100):
+        raise HTTPException(400, "x and y must be between 0 and 100")
+
+    box_positions[box_id] = {"x": round(x, 2), "y": round(y, 2)}
+    _save_json(BOX_POSITIONS_FILE, box_positions)
+    await broadcast({"type": "BOX_POSITIONS", "positions": box_positions})
+    return {"status": "ok", "positions": box_positions}
 
 
 # ─────────────────────────────────────────────

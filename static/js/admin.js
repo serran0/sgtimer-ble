@@ -28,6 +28,7 @@ const statsScale = document.getElementById("statsScale");
 const tickerScale = document.getElementById("tickerScale");
 const applySizesBtn = document.getElementById("applySizesBtn");
 const resetSizesBtn = document.getElementById("resetSizesBtn");
+const resetPositionsBtn = document.getElementById("resetPositionsBtn");
 const pairingOverlay = document.getElementById("pairingOverlay");
 const pairingDevice = document.getElementById("pairingDevice");
 const pairingHint = document.getElementById("pairingHint");
@@ -178,6 +179,13 @@ ws.onmessage = (e) => {
 
     case "DISPLAY_SETTINGS":
       applySizeInputs(msg.settings);
+      break;
+
+    case "BOX_POSITIONS":
+      // No live preview of the overlay layout here, and this also arrives
+      // on every fresh connection (mirroring DISPLAY_SETTINGS) — logging it
+      // would read as a change on every page load. Reset logs from the
+      // button click itself instead.
       break;
 
     case "ERROR":
@@ -535,6 +543,19 @@ applySizesBtn.addEventListener("click", () =>
   })
 );
 resetSizesBtn.addEventListener("click", () => saveDisplaySettings(sizeDefaults));
+
+resetPositionsBtn.addEventListener("click", async () => {
+  try {
+    const res = await fetch("/box_positions/reset", { method: "POST" });
+    if (!res.ok) {
+      log("⚠️ Could not reset box positions");
+      return;
+    }
+    log("📍 Overlay box positions reset to default.");
+  } catch (e) {
+    log("❌ Error resetting box positions: " + e.message);
+  }
+});
 
 // ───────────── Pairing ─────────────
 // The timer asks for the same confirmation on its own screen; this dialog is
